@@ -1,6 +1,9 @@
 package grades
 
-import "fmt"
+import (
+	"fmt"
+	"sync"
+)
 
 type Student struct {
 	ID        uint
@@ -28,7 +31,10 @@ func (s Students) GetByID(id uint) (*Student, error) {
 	return nil, fmt.Errorf("Student with ID %v does not exist", id)
 }
 
-var students Students
+var (
+	students      Students
+	studentsMutex sync.Mutex
+)
 
 type GradeType string
 
