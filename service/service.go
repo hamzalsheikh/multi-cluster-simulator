@@ -16,7 +16,6 @@ func Start(ctx context.Context, host, port string, reg registry.Registration,
 	if err != nil {
 		return ctx, err
 	}
-
 	return ctx, nil
 }
 
