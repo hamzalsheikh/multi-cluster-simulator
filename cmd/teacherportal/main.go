@@ -19,25 +19,26 @@ func main() {
 	host, port := "localhost", "5000"
 	serviceAddress := fmt.Sprintf("http://%v:%v", host, port)
 
-	var r registry.Registration
-	r.ServiceName = registry.TeacherPortal
-	r.ServiceURL = serviceAddress
-	r.RequiredServices = []registry.ServiceName{
+	var reg registry.Registration
+	reg.ServiceName = registry.TeacherPortal
+	reg.ServiceURL = serviceAddress
+	reg.RequiredServices = []registry.ServiceName{
 		registry.LogService,
 		registry.GradingService,
 	}
-	r.ServiceUpdateURL = r.ServiceURL + "/services"
+	reg.ServiceUpdateURL = reg.ServiceURL + "/services"
+	reg.HeartbeatURL = reg.ServiceURL + "/heartbeat"
 
 	ctx, err := service.Start(context.Background(),
 		host,
 		port,
-		r,
+		reg,
 		teacherportal.RegisterHandlers)
 	if err != nil {
 		stlog.Fatal(err)
 	}
 	if logProvider, err := registry.GetProvider(registry.LogService); err == nil {
-		log.SetClientLogger(logProvider, r.ServiceName)
+		log.SetClientLogger(logProvider, reg.ServiceName)
 	}
 
 	<-ctx.Done()
