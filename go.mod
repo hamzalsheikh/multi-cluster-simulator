@@ -1,3 +1,3 @@
-module grading
+module sandbox
 
-go 1.19
+go 1.21.0

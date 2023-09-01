@@ -3,11 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
-	"grading/log"
-	"grading/registry"
-	"grading/service"
-	"grading/teacherportal"
 	stlog "log"
+	"sandbox/log"
+	"sandbox/registry"
+	"sandbox/service"
+	"sandbox/teacherportal"
 )
 
 func main() {

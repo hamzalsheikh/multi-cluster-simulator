@@ -3,9 +3,9 @@ package service
 import (
 	"context"
 	"fmt"
-	"grading/registry"
 	"log"
 	"net/http"
+	"sandbox/registry"
 )
 
 func Start(ctx context.Context, host, port string, reg registry.Registration,

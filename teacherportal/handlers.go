@@ -4,10 +4,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"grading/grades"
-	"grading/registry"
 	"log"
 	"net/http"
+	"sandbox/grades"
+	"sandbox/registry"
 	"strconv"
 	"strings"
 )

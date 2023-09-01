@@ -3,9 +3,9 @@ package main
 import (
 	"context"
 	"fmt"
-	"grading/registry"
 	"log"
 	"net/http"
+	"sandbox/registry"
 )
 
 func main() {

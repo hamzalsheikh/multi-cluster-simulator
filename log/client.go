@@ -3,9 +3,9 @@ package log
 import (
 	"bytes"
 	"fmt"
-	"grading/registry"
 	stlog "log"
 	"net/http"
+	"sandbox/registry"
 )
 
 func SetClientLogger(serviceURL string, clientService registry.ServiceName) {
