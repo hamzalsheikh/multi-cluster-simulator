@@ -1,6 +1,7 @@
 package scheduler
 
 import (
+	"fmt"
 	"sync"
 	"time"
 )
@@ -33,12 +34,13 @@ func (n *Node) RunJob(j Job) {
 	n.CoresAvailable -= j.CoresNeeded
 	n.MemoryAvailable -= j.MemoryNeeded
 	n.mutex.Unlock()
-
-	time.Sleep(j.duration)
+	fmt.Printf("node %v running job %v", n.Id, j.Id)
+	time.Sleep(j.Duration)
 
 	n.mutex.Lock()
 	delete(n.RunningJobs, j.Id)
 	n.CoresAvailable += j.CoresNeeded
 	n.MemoryAvailable += j.MemoryNeeded
 	n.mutex.Unlock()
+	fmt.Printf("node %v finished job %v", n.Id, j.Id)
 }

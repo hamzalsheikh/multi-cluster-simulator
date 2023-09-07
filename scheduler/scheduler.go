@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 )
@@ -14,7 +15,7 @@ type Scheduler struct {
 	WQueueLock *sync.Mutex
 	RQueueLock *sync.Mutex
 	Policy     PolicyType
-	Cluster    Cluster
+	Cluster    *Cluster
 }
 
 type PolicyType string
@@ -28,24 +29,20 @@ type Job struct {
 	MemoryNeeded uint
 	CoresNeeded  uint
 	State        StateType
-	duration     time.Duration
+	Duration     time.Duration
 }
 
 type StateType string
 
 const (
-	Ready    = StateType("Ready")
-	Running  = StateType("Running")
-	Waiting  = StateType("Waiting")
+	READY    = StateType("Ready")
+	RUNNING  = StateType("Running")
+	WAITING  = StateType("Waiting")
 	Finished = StateType("Finished")
 )
 
-// create an instance of scheduler
-var sched = Scheduler{WQueueLock: new(sync.Mutex), RQueueLock: new(sync.Mutex)}
-
 // infinite loop to start scheduling
-func (sched Scheduler) Run() {
-
+func Run() {
 	switch sched.Policy {
 	case FIFO:
 		go sched.Fifo()
@@ -54,9 +51,10 @@ func (sched Scheduler) Run() {
 }
 
 // find a node for job
-func (sched Scheduler) ScheduleJob(j Job) error {
+func (sched *Scheduler) ScheduleJob(j Job) error {
 	// check for node that satisfies job requirements
 	for _, node := range sched.Cluster.Nodes {
+		fmt.Printf("node cores: %v, node mem: %v\n", node.CoresAvailable, node.MemoryAvailable)
 		if node.CoresAvailable > j.CoresNeeded && node.MemoryAvailable > j.MemoryNeeded {
 			go node.RunJob(j)
 			return nil
@@ -65,8 +63,9 @@ func (sched Scheduler) ScheduleJob(j Job) error {
 	return errors.New("not enough resources in cluster")
 }
 
-func (sched Scheduler) Fifo() {
+func (sched *Scheduler) Fifo() {
 	for {
+		fmt.Printf("I am here FIFO %+v , len(wait) = %v, len(ready) = %v\n", sched.ReadyQueue, len(sched.WaitQueue), len(sched.ReadyQueue))
 		// check for jobs in waiting queue
 		if len(sched.WaitQueue) > 0 {
 			sched.WQueueLock.Lock()
@@ -77,6 +76,7 @@ func (sched Scheduler) Fifo() {
 				sched.WaitQueue = sched.WaitQueue[1:]
 			}
 			sched.WQueueLock.Unlock()
+			time.Sleep(1 * time.Second)
 			continue
 		}
 
@@ -88,12 +88,13 @@ func (sched Scheduler) Fifo() {
 			sched.ReadyQueue = sched.ReadyQueue[1:]
 
 			sched.RQueueLock.Unlock()
-
+			fmt.Printf("%v\n", err)
 			if err != nil {
 				sched.WQueueLock.Lock()
 				sched.WaitQueue = append(sched.WaitQueue, j)
 				sched.WQueueLock.Unlock()
 			}
+			time.Sleep(1 * time.Second)
 			continue
 		}
 		// wait for new ready chan
