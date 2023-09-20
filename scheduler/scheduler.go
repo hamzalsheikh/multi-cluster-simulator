@@ -42,7 +42,17 @@ const (
 )
 
 // infinite loop to start scheduling
-func Run() {
+func Run(clt Cluster) {
+	// initialize cluster
+	cluster := clt
+	fmt.Printf("before cluster %+v\n", cluster)
+	for i := 0; i < len(cluster.Nodes); i++ {
+		cluster.Nodes[i].mutex = new(sync.Mutex)
+		cluster.Nodes[i].RunningJobs = make(map[uint]Job)
+	}
+
+	sched.Cluster = &cluster
+
 	switch sched.Policy {
 	case FIFO:
 		go sched.Fifo()

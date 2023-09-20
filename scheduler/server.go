@@ -27,8 +27,7 @@ type Node struct {
 var c = Cluster{Id: 1, Nodes: []Node{{Id: 1, MemoryAvailable: 10, CoresAvailable: 10, mutex: new(sync.Mutex), RunningJobs: make(map[uint]Job)}}}
 
 // create an instance of scheduler
-var sched = Scheduler{WQueueLock: new(sync.Mutex), RQueueLock: new(sync.Mutex), Policy: FIFO,
-	Cluster: &c}
+var sched = Scheduler{WQueueLock: new(sync.Mutex), RQueueLock: new(sync.Mutex), Policy: FIFO}
 
 func RegisterHandlers() {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
