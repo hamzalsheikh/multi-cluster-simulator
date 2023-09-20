@@ -20,10 +20,9 @@ func main() {
 		fmt.Println("Can't read file:", os.Args[1])
 		panic(err)
 	}
+
 	var cluster scheduler.Cluster
-	// data is the file content, you can use it
 	json.Unmarshal(jsonFile, &cluster)
-	fmt.Printf("cluster %+v", cluster)
 
 	scheduler.Run(cluster)
 	// choose a port randomly between 1024 to 49151

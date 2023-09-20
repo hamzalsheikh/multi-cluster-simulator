@@ -2,7 +2,6 @@ package scheduler
 
 import (
 	"errors"
-	"fmt"
 	"sync"
 	"time"
 )
@@ -45,7 +44,6 @@ const (
 func Run(clt Cluster) {
 	// initialize cluster
 	cluster := clt
-	fmt.Printf("before cluster %+v\n", cluster)
 	for i := 0; i < len(cluster.Nodes); i++ {
 		cluster.Nodes[i].mutex = new(sync.Mutex)
 		cluster.Nodes[i].RunningJobs = make(map[uint]Job)
@@ -64,7 +62,6 @@ func Run(clt Cluster) {
 func (sched *Scheduler) ScheduleJob(j Job) error {
 	// check for node that satisfies job requirements
 	for _, node := range sched.Cluster.Nodes {
-		fmt.Printf("node cores: %v, node mem: %v\n", node.CoresAvailable, node.MemoryAvailable)
 		if node.CoresAvailable > j.CoresNeeded && node.MemoryAvailable > j.MemoryNeeded {
 			go node.RunJob(j)
 			return nil
@@ -75,7 +72,6 @@ func (sched *Scheduler) ScheduleJob(j Job) error {
 
 func (sched *Scheduler) Fifo() {
 	for {
-		fmt.Printf("I am here FIFO %+v , len(wait) = %v, len(ready) = %v\n", sched.ReadyQueue, len(sched.WaitQueue), len(sched.ReadyQueue))
 		// check for jobs in waiting queue
 		if len(sched.WaitQueue) > 0 {
 			sched.WQueueLock.Lock()
@@ -98,7 +94,7 @@ func (sched *Scheduler) Fifo() {
 			sched.ReadyQueue = sched.ReadyQueue[1:]
 
 			sched.RQueueLock.Unlock()
-			fmt.Printf("%v\n", err)
+
 			if err != nil {
 				sched.WQueueLock.Lock()
 				sched.WaitQueue = append(sched.WaitQueue, j)

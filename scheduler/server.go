@@ -7,25 +7,6 @@ import (
 	"sync"
 )
 
-/*
-type Node struct {
-	Id     uint
-	Type   string
-	URL    string
-	Memory uint
-	Cores  []uint
-
-	MemoryAvailable uint
-	CoresAvailable  uint
-	RunningJobs     map[uint]Job
-	mutex           *sync.Mutex
-}
-
-*/
-
-// temp cluster instance
-var c = Cluster{Id: 1, Nodes: []Node{{Id: 1, MemoryAvailable: 10, CoresAvailable: 10, mutex: new(sync.Mutex), RunningJobs: make(map[uint]Job)}}}
-
 // create an instance of scheduler
 var sched = Scheduler{WQueueLock: new(sync.Mutex), RQueueLock: new(sync.Mutex), Policy: FIFO}
 
@@ -36,7 +17,7 @@ func RegisterHandlers() {
 		var j Job
 		dec := json.NewDecoder(r.Body)
 		err := dec.Decode(&j)
-		fmt.Printf("%s\n", err)
+
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			return
