@@ -29,6 +29,7 @@ type Job struct {
 	CoresNeeded  uint
 	State        StateType
 	Duration     time.Duration
+	Ownership    string
 }
 
 type StateType string
@@ -80,7 +81,15 @@ func (sched *Scheduler) Fifo() {
 			// remove from queue when successful
 			if err == nil {
 				sched.WaitQueue = sched.WaitQueue[1:]
+			} else {
+				// not enough resources after waiting in wait queue, try borrowing resources
+				// needs to be concurrent, bring back the job to top of queue if failed
+				sched.BorrowResources(sched.WaitQueue[0])
+				if err == nil {
+					sched.WaitQueue = sched.WaitQueue[1:]
+				}
 			}
+
 			sched.WQueueLock.Unlock()
 			time.Sleep(1 * time.Second)
 			continue

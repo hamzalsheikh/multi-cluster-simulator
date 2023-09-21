@@ -88,14 +88,26 @@ func (p *providers) Update(pat patch) {
 func (p providers) get(name ServiceName) (string, error) {
 	providers, ok := p.services[name]
 	if !ok {
-		return "", fmt.Errorf("No providers available for service %v", name)
+		return "", fmt.Errorf("no providers available for service %v", name)
 	}
 	idx := int(rand.Float32() * float32(len(providers)))
 	return providers[idx], nil
 }
 
+func (p providers) getAll(name ServiceName) ([]string, error) {
+	providers, ok := p.services[name]
+	if !ok {
+		return nil, fmt.Errorf("no providers available for service %v", name)
+	}
+	return providers, nil
+}
+
 func GetProvider(name ServiceName) (string, error) {
 	return prov.get(name)
+}
+
+func GetProviders(name ServiceName) ([]string, error) {
+	return prov.getAll(name)
 }
 
 var prov = providers{
