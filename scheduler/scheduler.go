@@ -7,14 +7,19 @@ import (
 )
 
 type Scheduler struct {
-	Id         uint
-	Name       string
-	ReadyQueue []Job
-	WaitQueue  []Job
-	WQueueLock *sync.Mutex
-	RQueueLock *sync.Mutex
-	Policy     PolicyType
-	Cluster    *Cluster
+	Id            uint
+	Name          string
+	URL           string
+	ReadyQueue    []Job
+	WaitQueue     []Job
+	LentQueue     []Job // Jobs in my cluster that doesn't belong to me
+	BorrowedQueue []Job // Jobs I sent to other clusters
+	WQueueLock    *sync.Mutex
+	RQueueLock    *sync.Mutex
+	LQueueLock    *sync.Mutex
+	BQueueLock    *sync.Mutex
+	Policy        PolicyType
+	Cluster       *Cluster
 }
 
 type PolicyType string
@@ -42,7 +47,7 @@ const (
 )
 
 // infinite loop to start scheduling
-func Run(clt Cluster) {
+func Run(clt Cluster, URL string) {
 	// initialize cluster
 	cluster := clt
 	for i := 0; i < len(cluster.Nodes); i++ {
@@ -51,7 +56,7 @@ func Run(clt Cluster) {
 	}
 
 	sched.Cluster = &cluster
-
+	sched.URL = URL
 	switch sched.Policy {
 	case FIFO:
 		go sched.Fifo()
@@ -71,6 +76,17 @@ func (sched *Scheduler) ScheduleJob(j Job) error {
 	return errors.New("not enough resources in cluster")
 }
 
+// find a node for job
+func (sched *Scheduler) Lend(j Job) error {
+	// check for node that satisfies job requirements
+	for _, node := range sched.Cluster.Nodes {
+		if node.CoresAvailable > j.CoresNeeded && node.MemoryAvailable > j.MemoryNeeded {
+			return nil
+		}
+	}
+	return errors.New("can't lend")
+}
+
 func (sched *Scheduler) Fifo() {
 	for {
 		// check for jobs in waiting queue
@@ -78,14 +94,19 @@ func (sched *Scheduler) Fifo() {
 			sched.WQueueLock.Lock()
 			// try scheduling first
 			err := sched.ScheduleJob(sched.WaitQueue[0])
-			// remove from queue when successful
+
 			if err == nil {
+				// remove from queue when successful
 				sched.WaitQueue = sched.WaitQueue[1:]
 			} else {
 				// not enough resources after waiting in wait queue, try borrowing resources
 				// needs to be concurrent, bring back the job to top of queue if failed
-				sched.BorrowResources(sched.WaitQueue[0])
+				err := sched.BorrowResources(sched.WaitQueue[0])
 				if err == nil {
+					// TODO: add to borrowedQueue
+					sched.BQueueLock.Lock()
+					sched.BorrowedQueue = append(sched.BorrowedQueue, sched.WaitQueue[0])
+					sched.BQueueLock.Unlock()
 					sched.WaitQueue = sched.WaitQueue[1:]
 				}
 			}
@@ -112,6 +133,24 @@ func (sched *Scheduler) Fifo() {
 			time.Sleep(1 * time.Second)
 			continue
 		}
+
+		// check for jobs in Lent Queue
+		if len(sched.LentQueue) > 0 {
+
+			err := sched.ScheduleJob(sched.LentQueue[0])
+			sched.LQueueLock.Lock()
+
+			// best effort to schedule lent jobs when
+			if err == nil {
+				sched.LentQueue = sched.LentQueue[1:]
+				// sent job back to borrower
+			}
+
+			sched.LQueueLock.Unlock()
+			time.Sleep(1 * time.Second)
+			continue
+		}
+		// all queues are empty, create a go routine that wakes me up when that changes
 		// wait for new ready chan
 		time.Sleep(1 * time.Second)
 	}

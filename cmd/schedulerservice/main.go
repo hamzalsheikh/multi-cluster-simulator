@@ -24,10 +24,10 @@ func main() {
 	var cluster scheduler.Cluster
 	json.Unmarshal(jsonFile, &cluster)
 
-	scheduler.Run(cluster)
 	// choose a port randomly between 1024 to 49151
 	host, port := "localhost", fmt.Sprint(rand.Intn(49151-1024)+1024)
 	serviceAddr := fmt.Sprintf("http://%v:%v", host, port)
+	scheduler.Run(cluster, serviceAddr)
 
 	var reg registry.Registration
 	reg.ServiceName = registry.Scheduler

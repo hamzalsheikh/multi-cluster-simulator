@@ -43,4 +43,5 @@ func (n *Node) RunJob(j Job) {
 	n.MemoryAvailable += j.MemoryNeeded
 	n.mutex.Unlock()
 	fmt.Printf("node %v finished job %v\n", n.Id, j.Id)
+	// inform scheduler that you're done
 }
