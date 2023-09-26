@@ -7,9 +7,10 @@ import (
 )
 
 type Scheduler struct {
-	Id            uint
-	Name          string
-	URL           string
+	Id   uint
+	Name string
+	URL  string
+	// TODO: change all queues to ordered maps
 	ReadyQueue    []Job
 	WaitQueue     []Job
 	LentQueue     []Job // Jobs in my cluster that doesn't belong to me
@@ -76,6 +77,41 @@ func (sched *Scheduler) ScheduleJob(j Job) error {
 	return errors.New("not enough resources in cluster")
 }
 
+func (sched *Scheduler) JobFinished(j Job) {
+	if j.Ownership == "" {
+		// my job so remove from state queue
+		if j.State == WAITING {
+			sched.WQueueLock.Lock()
+			for i := 0; i < len(sched.WaitQueue); i++ {
+				if j == sched.WaitQueue[i] {
+					sched.WaitQueue = append(sched.WaitQueue[:i], sched.WaitQueue[i+1:]...)
+				}
+			}
+			sched.WQueueLock.Unlock()
+		} else if j.State == READY {
+			sched.RQueueLock.Lock()
+			for i := 0; i < len(sched.ReadyQueue); i++ {
+				if j == sched.ReadyQueue[i] {
+					sched.ReadyQueue = append(sched.ReadyQueue[:i], sched.ReadyQueue[i+1:]...)
+				}
+			}
+			sched.RQueueLock.Unlock()
+		}
+		return
+	}
+
+	// job is for some other cluster
+	sched.LQueueLock.Lock()
+	for i := 0; i < len(sched.LentQueue); i++ {
+		if j == sched.LentQueue[i] {
+			sched.LentQueue = append(sched.LentQueue[:i], sched.LentQueue[i+1:]...)
+		}
+	}
+	sched.LQueueLock.Unlock()
+
+	sched.ReturnToBorrower(j)
+}
+
 // find a node for job
 func (sched *Scheduler) Lend(j Job) error {
 	// check for node that satisfies job requirements
@@ -108,6 +144,7 @@ func (sched *Scheduler) Fifo() {
 					sched.BorrowedQueue = append(sched.BorrowedQueue, sched.WaitQueue[0])
 					sched.BQueueLock.Unlock()
 					sched.WaitQueue = sched.WaitQueue[1:]
+					// start a go routine that tracks the time spent at lender, canceling exchange if time limit exceeded
 				}
 			}
 

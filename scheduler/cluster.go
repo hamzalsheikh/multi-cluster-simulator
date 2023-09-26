@@ -44,4 +44,6 @@ func (n *Node) RunJob(j Job) {
 	n.mutex.Unlock()
 	fmt.Printf("node %v finished job %v\n", n.Id, j.Id)
 	// inform scheduler that you're done
+	// should be a http request, but call the function directly for now
+	sched.JobFinished(j)
 }

@@ -16,7 +16,7 @@ var sched = Scheduler{WQueueLock: new(sync.Mutex), RQueueLock: new(sync.Mutex), 
 
 func RegisterHandlers() {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Println("recieved!")
+		fmt.Println("job recieved!")
 		// decode job object
 		var j Job
 		dec := json.NewDecoder(r.Body)
@@ -36,7 +36,7 @@ func RegisterHandlers() {
 	})
 
 	http.HandleFunc("/borrow", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Println("recieved!")
+		fmt.Println("borrow recieved!")
 		// decode job object
 		var j Job
 		dec := json.NewDecoder(r.Body)
@@ -68,6 +68,30 @@ func RegisterHandlers() {
 		}
 
 	})
+
+	http.HandleFunc("/lent", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Println("lent recieved!")
+		// decode job object
+		var j Job
+		dec := json.NewDecoder(r.Body)
+		err := dec.Decode(&j)
+
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		// TODO: implement this in JobFinished
+		sched.BQueueLock.Lock()
+		defer sched.BQueueLock.Unlock()
+
+		for i := 0; i < len(sched.BorrowedQueue); i++ {
+			if j == sched.BorrowedQueue[i] {
+				sched.BorrowedQueue = append(sched.BorrowedQueue[:i], sched.BorrowedQueue[i+1:]...)
+			}
+		}
+		fmt.Printf("removed job %+v from borrowed queue %+v\n", j, len(sched.BorrowedQueue))
+	})
 }
 
 /*
@@ -77,13 +101,12 @@ or waits for schedulers to say no
 */
 func (sched *Scheduler) BorrowResources(j Job) error {
 	schedURLs, err := registry.GetProviders(registry.Scheduler)
-
-	// create a wait chan for this dude
-	jobScheduled := make(chan error)
-
 	if err != nil {
 		return err
 	}
+
+	// create a wait chan for this dude
+	jobScheduled := make(chan error)
 
 	// broadcast borrowing request
 	for _, schedURL := range schedURLs {
@@ -111,6 +134,7 @@ func (sched *Scheduler) BorrowResources(j Job) error {
 			}
 
 			res, err := http.Post(lender.Path, "application/json", buf)
+			fmt.Printf("sent job %+v request to scheduler with URL: %s\n", j, schedURL)
 			if err != nil {
 				fmt.Printf("couldn't send job %+v to scheduler %s\n", j, schedURL)
 				jobScheduled <- err
@@ -125,12 +149,12 @@ func (sched *Scheduler) BorrowResources(j Job) error {
 
 		}(j, schedURL)
 
-		fmt.Printf("sent job %+v request to scheduler with URL: %s\n", j, schedURL)
 	}
 
 	// wait for responses at chan
 	borrowed := errors.New("couldn't find a lender")
 	for i := 0; i < len(schedURLs); i++ {
+		// block waiting for a response from goroutines
 		resp := <-jobScheduled
 		switch resp.(type) {
 		case *BorrowSuccess:
@@ -162,4 +186,35 @@ type BorrowSuccess struct {
 func (e *BorrowSuccess) Error() string {
 	// can also send url or information through this if we want BorrowSuccess private
 	return "ok"
+}
+
+func (sched *Scheduler) ReturnToBorrower(j Job) {
+	borrower, err := url.Parse(j.Ownership + "/lent")
+	if err != nil {
+		fmt.Printf("couldn't parse borrower url\n")
+		return
+	}
+	buf := new(bytes.Buffer)
+	enc := json.NewEncoder(buf)
+	// do some pre-processing of job
+	err = enc.Encode(j)
+	if err != nil {
+		fmt.Printf("couldn't encode job\n")
+		return
+	}
+	attempts := 3
+
+	for i := 0; i < attempts; i++ {
+
+		res, err := http.Post(borrower.Path, "application/json", buf)
+		fmt.Printf("sent job %+v completion to scheduler with URL: %s\n", j, borrower.Path)
+		if err != nil {
+			fmt.Printf("couldn't send job %+v to scheduler %s\n", j, borrower.Path)
+			return
+		}
+
+		if res.StatusCode == http.StatusOK {
+			return
+		}
+	}
 }
