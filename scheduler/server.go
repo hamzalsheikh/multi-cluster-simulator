@@ -12,7 +12,7 @@ import (
 )
 
 // create an instance of scheduler
-var sched = Scheduler{WQueueLock: new(sync.Mutex), RQueueLock: new(sync.Mutex), Policy: FIFO}
+var sched = Scheduler{WQueueLock: new(sync.Mutex), RQueueLock: new(sync.Mutex), LQueueLock: new(sync.Mutex), BQueueLock: new(sync.Mutex), Policy: FIFO}
 
 func RegisterHandlers() {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -57,7 +57,8 @@ func RegisterHandlers() {
 			sched.LQueueLock.Lock()
 			defer sched.LQueueLock.Unlock()
 
-			j.Ownership = r.Host
+			//j.Ownership = r.Response.Request.Host
+			fmt.Printf("ownership: %s", j.Ownership)
 
 			sched.LentQueue = append(sched.LentQueue, j)
 			fmt.Printf("added job %+v to Lent Queue %+v\n", j, len(sched.LentQueue))
@@ -100,18 +101,24 @@ returns when first scheduler accepts to schedule
 or waits for schedulers to say no
 */
 func (sched *Scheduler) BorrowResources(j Job) error {
+	fmt.Printf("\nIn borrow resources\n")
 	schedURLs, err := registry.GetProviders(registry.Scheduler)
 	if err != nil {
 		return err
 	}
+	j.Ownership = sched.URL
+	fmt.Printf("Borrow resources: got providers %s, i am %s\n", schedURLs, sched.URL)
 
 	// create a wait chan for this dude
 	jobScheduled := make(chan error)
-
+	// REMOVE temp for testing
+	counter := 0
 	// broadcast borrowing request
 	for _, schedURL := range schedURLs {
 
 		if schedURL == sched.URL {
+			//schedURLs = append(schedURLs[:idx], schedURLs[idx+1:]...)
+			counter++
 			continue
 		}
 
@@ -119,6 +126,7 @@ func (sched *Scheduler) BorrowResources(j Job) error {
 		go func(j Job, schedURL string) {
 			lender, err := url.Parse(schedURL + "/borrow")
 			if err != nil {
+				fmt.Printf("couldn't parse URL\n")
 				jobScheduled <- err
 				return
 			}
@@ -127,16 +135,16 @@ func (sched *Scheduler) BorrowResources(j Job) error {
 			// do some pre-processing of job
 			err = enc.Encode(j)
 			if err != nil {
-				// should return error to borrowedrequests
+				// should return error to borrowed requests
 				fmt.Printf("couldn't encode job\n")
 				jobScheduled <- err
 				return
 			}
+			fmt.Printf("lender path is: %s but should be %s\n", lender.Path, schedURL+"/borrow")
+			res, err := http.Post(schedURL+"/borrow", "application/json", buf)
 
-			res, err := http.Post(lender.Path, "application/json", buf)
-			fmt.Printf("sent job %+v request to scheduler with URL: %s\n", j, schedURL)
 			if err != nil {
-				fmt.Printf("couldn't send job %+v to scheduler %s\n", j, schedURL)
+				fmt.Printf("couldn't send job %v to scheduler %s\n", j.Id, schedURL)
 				jobScheduled <- err
 				return
 			}
@@ -153,25 +161,27 @@ func (sched *Scheduler) BorrowResources(j Job) error {
 
 	// wait for responses at chan
 	borrowed := errors.New("couldn't find a lender")
-	for i := 0; i < len(schedURLs); i++ {
-		// block waiting for a response from goroutines
-		resp := <-jobScheduled
-		switch resp.(type) {
-		case *BorrowSuccess:
+	if len(schedURLs) > counter {
+		for i := 0; i < len(schedURLs)-counter; i++ {
+			// block waiting for a response from goroutines
+			resp := <-jobScheduled
+			switch resp.(type) {
+			case *BorrowSuccess:
 
-			if borrowed.Error() == "couldn't find a lender" {
-				// first scheduler to accept
-				borrowed = resp
+				if borrowed.Error() == "couldn't find a lender" {
+					// first scheduler to accept
+					borrowed = resp
+				}
+				/* else {
+					// another scheduler accepted the request before this one
+					// ask the other sched to abort
+
+				}
+				*/
+
+			default:
+				fmt.Printf("error recieved in BorrowResources: %v\n", resp)
 			}
-			/* else {
-				// another scheduler accepted the request before this one
-				// ask the other sched to abort
-
-			}
-			*/
-
-		default:
-			fmt.Printf("error recieved: %v", resp)
 		}
 	}
 
@@ -205,11 +215,11 @@ func (sched *Scheduler) ReturnToBorrower(j Job) {
 	attempts := 3
 
 	for i := 0; i < attempts; i++ {
-
-		res, err := http.Post(borrower.Path, "application/json", buf)
+		borrowerURL := j.Ownership + "/lent"
+		res, err := http.Post(borrowerURL, "application/json", buf)
 		fmt.Printf("sent job %+v completion to scheduler with URL: %s\n", j, borrower.Path)
 		if err != nil {
-			fmt.Printf("couldn't send job %+v to scheduler %s\n", j, borrower.Path)
+			fmt.Printf("couldn't send job to scheduler %s err %s\n", borrower.Path, err)
 			return
 		}
 

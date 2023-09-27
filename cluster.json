@@ -1,9 +1,0 @@
-{
-    "Id": 1,
-    "Nodes": [
-        {
-            "Id": 1,
-            "MemoryAvailable": 10,
-            "CoresAvailable": 10
-        }]
-}

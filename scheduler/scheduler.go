@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 )
@@ -134,11 +135,17 @@ func (sched *Scheduler) Fifo() {
 			if err == nil {
 				// remove from queue when successful
 				sched.WaitQueue = sched.WaitQueue[1:]
+				fmt.Printf("sent job %+v to node from wait queue\n", sched.WaitQueue[0])
+
 			} else {
 				// not enough resources after waiting in wait queue, try borrowing resources
 				// needs to be concurrent, bring back the job to top of queue if failed
+				fmt.Printf("not enough resources for job: %+v\ntrying to borrow", sched.WaitQueue[0])
+
 				err := sched.BorrowResources(sched.WaitQueue[0])
 				if err == nil {
+					fmt.Printf("successfully borrowed resources for j %+v\n", sched.WaitQueue[0])
+
 					// TODO: add to borrowedQueue
 					sched.BQueueLock.Lock()
 					sched.BorrowedQueue = append(sched.BorrowedQueue, sched.WaitQueue[0])
@@ -146,6 +153,8 @@ func (sched *Scheduler) Fifo() {
 					sched.WaitQueue = sched.WaitQueue[1:]
 					// start a go routine that tracks the time spent at lender, canceling exchange if time limit exceeded
 				}
+				fmt.Printf("couldn't borrow resources for job: %+v\n", sched.WaitQueue[0])
+
 			}
 
 			sched.WQueueLock.Unlock()
@@ -156,16 +165,20 @@ func (sched *Scheduler) Fifo() {
 		// check for jobs in ready queue
 		if len(sched.ReadyQueue) > 0 {
 			sched.RQueueLock.Lock()
+
 			err := sched.ScheduleJob(sched.ReadyQueue[0])
 			j := sched.ReadyQueue[0]
 			sched.ReadyQueue = sched.ReadyQueue[1:]
 
 			sched.RQueueLock.Unlock()
-
+			fmt.Printf("sent job %+v to node from ready queue\n", j)
 			if err != nil {
 				sched.WQueueLock.Lock()
+				j.State = WAITING
 				sched.WaitQueue = append(sched.WaitQueue, j)
 				sched.WQueueLock.Unlock()
+				fmt.Printf("sent job %+v to wait queue\n", j)
+
 			}
 			time.Sleep(1 * time.Second)
 			continue
