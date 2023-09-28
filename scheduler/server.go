@@ -184,7 +184,9 @@ func (sched *Scheduler) BorrowResources(j Job) error {
 			}
 		}
 	}
-
+	if borrowed.Error() != "couldn't find a lender" {
+		return nil
+	}
 	return borrowed
 }
 
@@ -199,6 +201,7 @@ func (e *BorrowSuccess) Error() string {
 }
 
 func (sched *Scheduler) ReturnToBorrower(j Job) {
+	fmt.Printf("in return to borrower\n")
 	borrower, err := url.Parse(j.Ownership + "/lent")
 	if err != nil {
 		fmt.Printf("couldn't parse borrower url\n")
@@ -217,7 +220,7 @@ func (sched *Scheduler) ReturnToBorrower(j Job) {
 	for i := 0; i < attempts; i++ {
 		borrowerURL := j.Ownership + "/lent"
 		res, err := http.Post(borrowerURL, "application/json", buf)
-		fmt.Printf("sent job %+v completion to scheduler with URL: %s\n", j, borrower.Path)
+		fmt.Printf("sent job %v completion to scheduler with URL: %s\n", j.Id, borrower.Path)
 		if err != nil {
 			fmt.Printf("couldn't send job to scheduler %s err %s\n", borrower.Path, err)
 			return
