@@ -1,16 +1,13 @@
 package client
 
-import (
-	"fmt"
-	"net/http"
-)
+import "sandbox/scheduler"
 
-// the client sends jobs to scheduler through http requests
-// client takes as an input a distribution and knows it's cluster size
-// the distribution dictates the job sizes to create and send to the scheduler
+type Client struct {
+	Name         string
+	Cluster      scheduler.Cluster
+	SchedulerURL string
+}
 
-func RegisterHandlers() {
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "Hello!")
-	})
+func SetSchedURL(URL string) {
+	client.SchedulerURL = URL
 }
