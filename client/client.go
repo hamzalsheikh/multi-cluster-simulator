@@ -2,6 +2,7 @@ package client
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"sandbox/scheduler"
@@ -23,6 +24,7 @@ func SetSchedURL(URL string) {
 func (c *Client) newClient() {
 	// request cluster information & this can include more information
 	// in the future
+	// key exchange ?
 	res, err := http.Get(c.SchedulerURL + "/newClient")
 	if err != nil {
 		log.Println(err)
@@ -36,4 +38,5 @@ func (c *Client) newClient() {
 		return
 	}
 	c.Cluster = cluster
+	fmt.Printf("cluster %+v \n", cluster)
 }

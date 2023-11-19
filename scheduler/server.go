@@ -93,6 +93,21 @@ func RegisterHandlers() {
 		}
 		fmt.Printf("removed job %+v from borrowed queue %+v\n", j, len(sched.BorrowedQueue))
 	})
+
+	http.HandleFunc("/newClient", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Println("new Client! \n")
+		// get current cluster
+		cluster := sched.Cluster
+		// preprocessing
+		buf := new(bytes.Buffer)
+		enc := json.NewEncoder(buf)
+		err := enc.Encode(cluster)
+		if err != nil {
+			return
+		}
+
+		w.Write(buf.Bytes())
+	})
 }
 
 /*
