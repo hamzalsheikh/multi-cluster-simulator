@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"os"
 	"sandbox/client"
-	"sandbox/scheduler"
 )
 
 func main() {
@@ -26,10 +25,4 @@ func main() {
 	schedPort := os.Args[1]
 
 	client.Run(fmt.Sprintf("http://%v:%v", "localhost", schedPort))
-	var j scheduler.Job
-	j.CoresNeeded = 1
-	j.Duration = 10
-	j.MemoryNeeded = 1
-	client.SendJob(j)
-
 }

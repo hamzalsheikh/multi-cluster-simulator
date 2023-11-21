@@ -4,8 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math/rand"
 	"net/http"
 	"sandbox/scheduler"
+
+	"gonum.org/v1/gonum/stat/distuv"
 )
 
 type Client struct {
@@ -19,6 +22,7 @@ type Client struct {
 func Run(URL string) {
 	client.SchedulerURL = URL
 	client.newClient()
+	client.sendJobs()
 }
 
 func (c *Client) newClient() {
@@ -56,6 +60,30 @@ func (c *Client) setMaxCluster() {
 			maxCores = uint(len(node.Cores))
 		}
 	}
+
 	c.maxJobCore = maxCores
 	c.maxJobMem = maxMem
+}
+
+func (c *Client) sendJobs() {
+	i := 0
+	for i < 10 {
+		//var dist distuv.Normal
+
+		dist := distuv.LogNormal{
+			Mu:    1, // Mean of the normal distribution
+			Sigma: 1, // Standard deviation of the normal distribution
+		}
+
+		var j scheduler.Job
+		j.Id = uint(i)
+		fmt.Print(c.maxJobCore)
+		j.CoresNeeded = uint(rand.Intn(int(c.maxJobCore))) //uint( dist.Rand() * float64(c.maxJobCore))
+		j.Duration = 10
+		j.MemoryNeeded = uint(rand.Intn(int(c.maxJobMem))) // uint(dist.Rand() * float64(c.maxJobMem))
+		fmt.Printf("cores: %v memory %v\n", dist.Rand(), dist.Rand())
+		SendJob(j)
+		i++
+	}
+
 }
