@@ -25,7 +25,7 @@ func main() {
 
 	schedPort := os.Args[1]
 
-	client.SetSchedURL(fmt.Sprintf("http://%v:%v", "localhost", schedPort))
+	client.Run(fmt.Sprintf("http://%v:%v", "localhost", schedPort))
 	var j scheduler.Job
 	j.CoresNeeded = 1
 	j.Duration = 10

@@ -12,11 +12,11 @@ type Client struct {
 	Name         string
 	Cluster      scheduler.Cluster
 	SchedulerURL string
-	maxJobMem    int
-	maxJobCore   int
+	maxJobMem    uint
+	maxJobCore   uint
 }
 
-func SetSchedURL(URL string) {
+func Run(URL string) {
 	client.SchedulerURL = URL
 	client.newClient()
 }
@@ -39,4 +39,23 @@ func (c *Client) newClient() {
 	}
 	c.Cluster = cluster
 	fmt.Printf("cluster %+v \n", cluster)
+
+	// set job range
+	c.setMaxCluster()
+}
+
+func (c *Client) setMaxCluster() {
+	var maxCores uint
+	var maxMem uint
+
+	for _, node := range c.Cluster.Nodes {
+		if node.Memory > maxMem {
+			maxMem = node.Memory
+		}
+		if len(node.Cores) > int(maxCores) {
+			maxCores = uint(len(node.Cores))
+		}
+	}
+	c.maxJobCore = maxCores
+	c.maxJobMem = maxMem
 }
