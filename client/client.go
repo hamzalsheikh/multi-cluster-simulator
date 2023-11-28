@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"math/rand"
 	"net/http"
 	"sandbox/scheduler"
 	"time"
@@ -71,6 +70,24 @@ func (c *Client) setMaxCluster() {
 }
 
 func (c *Client) sendJobs() {
+	// approximating normal distribution
+	job_dist := distuv.Beta{
+		Alpha: 2,
+		Beta:  2,
+	}
+	var id uint
+	getJob := func() scheduler.Job {
+
+		var j scheduler.Job
+		j.Id = id
+		fmt.Print(c.maxJobCore)
+		j.CoresNeeded = uint(job_dist.Rand()) * c.maxJobCore // uint(rand.Intn(int(c.maxJobCore))) //uint( dist.Rand() * float64(c.maxJobCore))
+		j.Duration = 10
+		j.MemoryNeeded = uint(job_dist.Rand()) * c.maxJobMem // uint(rand.Intn(int(c.maxJobMem)))
+
+		id++
+		return j
+	}
 
 	// create time distrribution
 	switch c.time_dist {
@@ -87,40 +104,63 @@ func (c *Client) sendJobs() {
 			i := 0
 			for i < jobs {
 				i++
-				var j scheduler.Job
-				j.Id = uint(0)
-				fmt.Print(c.maxJobCore)
-				j.CoresNeeded = uint(rand.Intn(int(c.maxJobCore))) //uint( dist.Rand() * float64(c.maxJobCore))
-				j.Duration = 10
-				j.MemoryNeeded = uint(rand.Intn(int(c.maxJobMem))) // uint(dist.Rand() * float64(c.maxJobMem))
+				// uint(dist.Rand() * float64(c.maxJobMem))
 				//fmt.Printf("cores: %v memory %v\n", dist.Rand(), dist.Rand())
+				j := getJob()
 				SendJob(j)
 				time.Sleep(time.Duration(time_between_jobs) * time.Second)
 
 			}
 
 		}
-	}
-	/*
-		i := 0
-		for i < 10 {
-			//var dist distuv.Normal
 
-			dist := distuv.LogNormal{
-				Mu:    1, // Mean of the normal distribution
-				Sigma: 1, // Standard deviation of the normal distribution
+		/*
+			i := 0
+			for i < 10 {
+				//var dist distuv.Normal
+
+				dist := distuv.LogNormal{
+					Mu:    1, // Mean of the normal distribution
+					Sigma: 1, // Standard deviation of the normal distribution
+				}
+
+				var j scheduler.Job
+				j.Id = uint(i)
+				fmt.Print(c.maxJobCore)
+				j.CoresNeeded = uint(rand.Intn(int(c.maxJobCore))) //uint( dist.Rand() * float64(c.maxJobCore))
+				j.Duration = 10
+				j.MemoryNeeded = uint(rand.Intn(int(c.maxJobMem))) // uint(dist.Rand() * float64(c.maxJobMem))
+				fmt.Printf("cores: %v memory %v\n", dist.Rand(), dist.Rand())
+				SendJob(j)
+				i++
 			}
+		*/
 
-			var j scheduler.Job
-			j.Id = uint(i)
-			fmt.Print(c.maxJobCore)
-			j.CoresNeeded = uint(rand.Intn(int(c.maxJobCore))) //uint( dist.Rand() * float64(c.maxJobCore))
-			j.Duration = 10
-			j.MemoryNeeded = uint(rand.Intn(int(c.maxJobMem))) // uint(dist.Rand() * float64(c.maxJobMem))
-			fmt.Printf("cores: %v memory %v\n", dist.Rand(), dist.Rand())
-			SendJob(j)
-			i++
-		}
-	*/
+		/*
+			case "weibull":
+				time_dist := distuv.Weibull{
+					Lambda: 10,
+					K:      3,
+				}
 
+				for {
+					// each for loop is one minute, lambda jobs per minute is sent
+					jobs := int(time_dist.Rand())
+					fmt.Printf("jobs per minute: %v", jobs)
+					time_between_jobs := 60 / jobs
+					i := 0
+					for i < jobs {
+						i++
+						// uint(dist.Rand() * float64(c.maxJobMem))
+						//fmt.Printf("cores: %v memory %v\n", dist.Rand(), dist.Rand())
+						j := getJob()
+						SendJob(j)
+						time.Sleep(time.Duration(time_between_jobs) * time.Second)
+
+					}
+				}
+			}
+		*/
+
+	}
 }
