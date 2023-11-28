@@ -114,53 +114,20 @@ func (c *Client) sendJobs() {
 
 		}
 
-		/*
-			i := 0
-			for i < 10 {
-				//var dist distuv.Normal
+	case "weibull":
+		time_dist := distuv.Weibull{
+			Lambda: 10,
+			K:      3,
+		}
 
-				dist := distuv.LogNormal{
-					Mu:    1, // Mean of the normal distribution
-					Sigma: 1, // Standard deviation of the normal distribution
-				}
+		for {
 
-				var j scheduler.Job
-				j.Id = uint(i)
-				fmt.Print(c.maxJobCore)
-				j.CoresNeeded = uint(rand.Intn(int(c.maxJobCore))) //uint( dist.Rand() * float64(c.maxJobCore))
-				j.Duration = 10
-				j.MemoryNeeded = uint(rand.Intn(int(c.maxJobMem))) // uint(dist.Rand() * float64(c.maxJobMem))
-				fmt.Printf("cores: %v memory %v\n", dist.Rand(), dist.Rand())
-				SendJob(j)
-				i++
-			}
-		*/
+			j := getJob()
+			SendJob(j)
+			// weibull time between jobs
+			// 63% is less than lambda seconds
+			time.Sleep(time.Duration(time_dist.Rand()) * time.Second)
 
-		/*
-			case "weibull":
-				time_dist := distuv.Weibull{
-					Lambda: 10,
-					K:      3,
-				}
-
-				for {
-					// each for loop is one minute, lambda jobs per minute is sent
-					jobs := int(time_dist.Rand())
-					fmt.Printf("jobs per minute: %v", jobs)
-					time_between_jobs := 60 / jobs
-					i := 0
-					for i < jobs {
-						i++
-						// uint(dist.Rand() * float64(c.maxJobMem))
-						//fmt.Printf("cores: %v memory %v\n", dist.Rand(), dist.Rand())
-						j := getJob()
-						SendJob(j)
-						time.Sleep(time.Duration(time_between_jobs) * time.Second)
-
-					}
-				}
-			}
-		*/
-
+		}
 	}
 }
