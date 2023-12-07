@@ -38,7 +38,7 @@ func newTraceProvider(exp sdktrace.SpanExporter) *sdktrace.TracerProvider {
 	)
 }
 
-func CreateTracer(ctx context.Context) trace.Tracer {
+func CreateTracer(ctx context.Context) (*sdktrace.TracerProvider, trace.Tracer) {
 
 	exp, err := newExporter(ctx)
 	if err != nil {
@@ -49,10 +49,10 @@ func CreateTracer(ctx context.Context) trace.Tracer {
 	tp := newTraceProvider(exp)
 
 	// Handle shutdown properly so nothing leaks.
-	//defer func() { _ = tp.Shutdown(ctx) }()
+	// defer func() { _ = tp.Shutdown(ctx) }()
 
 	otel.SetTracerProvider(tp)
 
 	// Finally, set the tracer that can be used for this package.
-	return tp.Tracer("ClientService")
+	return tp, tp.Tracer("ClientService")
 }
