@@ -16,6 +16,8 @@ var client Client
 
 func RegisterHandlers() {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		_, span := client.tracer.Start(r.Context(), "hello-span")
+		defer span.End()
 		fmt.Fprintf(w, "Hello!")
 	})
 }

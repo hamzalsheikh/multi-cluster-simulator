@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -8,6 +9,8 @@ import (
 	"sandbox/scheduler"
 	"time"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
 	"gonum.org/v1/gonum/stat/distuv"
 )
 
@@ -19,12 +22,36 @@ type Client struct {
 	maxJobCore   uint
 	time_dist    string
 	job_dist     string
+	tracer       trace.Tracer
 }
 
 func Run(URL string) {
 	client.SchedulerURL = URL
+
+	client.initialize_tracer()
 	client.newClient()
 	client.sendJobs()
+}
+
+func (c *Client) initialize_tracer() {
+	ctx := context.Background()
+
+	exp, err := newExporter(ctx)
+	if err != nil {
+		log.Fatalf("failed to initialize exporter: %v", err)
+		fmt.Printf("am i failing in creating new exporter?\n")
+	}
+
+	// Create a new tracer provider with a batch span processor and the given exporter.
+	tp := newTraceProvider(exp)
+
+	// Handle shutdown properly so nothing leaks.
+	//defer func() { _ = tp.Shutdown(ctx) }()
+
+	otel.SetTracerProvider(tp)
+
+	// Finally, set the tracer that can be used for this package.
+	c.tracer = tp.Tracer("Client")
 }
 
 func (c *Client) newClient() {
