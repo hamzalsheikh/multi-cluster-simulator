@@ -16,6 +16,8 @@ var sched = Scheduler{WQueueLock: new(sync.Mutex), RQueueLock: new(sync.Mutex), 
 
 func RegisterHandlers() {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		_, span := sched.tracer.Start(r.Context(), "job-recieved")
+		defer span.End()
 		fmt.Println("job recieved!")
 		// decode job object
 		var j Job

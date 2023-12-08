@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"go.opentelemetry.io/otel/trace"
 )
 
 type Scheduler struct {
@@ -22,6 +24,7 @@ type Scheduler struct {
 	BQueueLock    *sync.Mutex
 	Policy        PolicyType
 	Cluster       *Cluster
+	tracer        trace.Tracer
 }
 
 type PolicyType string
@@ -47,6 +50,10 @@ const (
 	WAITING  = StateType("Waiting")
 	Finished = StateType("Finished")
 )
+
+func SetTracer(t trace.Tracer) {
+	sched.tracer = t
+}
 
 // infinite loop to start scheduling
 func Run(clt Cluster, URL string) {

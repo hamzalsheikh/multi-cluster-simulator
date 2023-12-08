@@ -14,6 +14,16 @@ import (
 
 func main() {
 
+	// Create trace
+	// TODO: jeager currently implemented, maybe add stdout / straight to file
+	ctx_trace := context.Background()
+
+	traceProvider, tracer := scheduler.CreateTracer(ctx_trace)
+
+	defer func() { _ = traceProvider.Shutdown(ctx_trace) }()
+
+	scheduler.SetTracer(tracer)
+
 	// get cluster from file
 	jsonFile, err := os.ReadFile(os.Args[1])
 	if err != nil {
