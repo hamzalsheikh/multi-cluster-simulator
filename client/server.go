@@ -2,6 +2,7 @@ package client
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -23,19 +24,31 @@ func RegisterHandlers() {
 }
 
 func SendJob(j scheduler.Job) {
+	// create send job context
+	cont := context.Background()
 
+	ctx, span := client.Tracer.Start(cont, "sendJob-span")
+	defer span.End()
+
+	// do some pre-processing of job
 	buf := new(bytes.Buffer)
 	enc := json.NewEncoder(buf)
-	// do some pre-processing of job
-	err := enc.Encode(j)
 
+	err := enc.Encode(j)
 	if err != nil {
-		// should return error to borrowed requests
+		// should return error to borrowed requests?
 		fmt.Printf("couldn't encode job\n")
 		return
 	}
 
-	_, err = http.Post(client.SchedulerURL+"/", "application/json", buf)
+	req, _ := http.NewRequestWithContext(ctx, "POST", client.SchedulerURL+"/", buf)
+	req.Header.Set("Content-Type", "application/json")
+
+	httpClient := http.DefaultClient
+	_, err = httpClient.Do(req)
+
+	//_, err = http.Post(client.SchedulerURL+"/", "application/json", buf)
+
 	if err != nil {
 		fmt.Printf("couldn't send job to scheduler\n")
 		return
