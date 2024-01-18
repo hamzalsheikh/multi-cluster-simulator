@@ -53,6 +53,9 @@ func CreateTracer(ctx context.Context) (*sdktrace.TracerProvider, trace.Tracer) 
 
 	otel.SetTracerProvider(tp)
 
+	// set global propagator to tracecontext (the default is no-op).
+	//otel.SetTextMapPropagator(propagation.TraceContext{})
+
 	// Finally, set the tracer that can be used for this package.
 	return tp, tp.Tracer("ClientService")
 }

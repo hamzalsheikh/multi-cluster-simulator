@@ -9,6 +9,8 @@ import (
 	"net/url"
 	"sandbox/registry"
 	"sync"
+
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 // create an instance of scheduler
@@ -16,7 +18,7 @@ var sched = Scheduler{WQueueLock: new(sync.Mutex), RQueueLock: new(sync.Mutex), 
 
 func RegisterHandlers() {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		_, span := sched.tracer.Start(r.Context(), "job-recieved")
+		ctx, span := sched.tracer.Start(r.Context(), "job-recieved")
 		defer span.End()
 		fmt.Println("job recieved!")
 		// decode job object
@@ -32,9 +34,17 @@ func RegisterHandlers() {
 		// add job to ready queue
 		sched.RQueueLock.Lock()
 		defer sched.RQueueLock.Unlock()
-
+		//span.AddEvent("Appending to ready Queue")
 		sched.ReadyQueue = append(sched.ReadyQueue, j)
 		fmt.Printf("added job %+v to ready queue %+v\n", j, len(sched.ReadyQueue))
+
+		req, _ := http.NewRequestWithContext(ctx, "GET", r.Header.Get("Referer")+"/jobAdded", nil)
+		fmt.Printf("sending request to: %v\n", r.Header.Get("Referer")+"/jobAdded")
+
+		httpClient := http.Client{Transport: otelhttp.NewTransport(http.DefaultTransport)}
+		req.Header.Set("Content-Type", "application/json")
+		_, err = httpClient.Do(req)
+
 	})
 
 	http.HandleFunc("/borrow", func(w http.ResponseWriter, r *http.Request) {
@@ -97,7 +107,7 @@ func RegisterHandlers() {
 	})
 
 	http.HandleFunc("/newClient", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Println("new Client! \n")
+		fmt.Println("new Client!")
 		// get current cluster
 		cluster := sched.Cluster
 		// preprocessing

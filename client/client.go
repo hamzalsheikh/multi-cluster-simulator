@@ -14,6 +14,7 @@ import (
 
 type Client struct {
 	Name         string
+	URL          string
 	Cluster      scheduler.Cluster
 	SchedulerURL string
 	maxJobMem    uint
@@ -23,8 +24,9 @@ type Client struct {
 	Tracer       trace.Tracer
 }
 
-func Run(URL string) {
-	client.SchedulerURL = URL
+func Run(schedURL string, URL string) {
+	client.SchedulerURL = schedURL
+	client.URL = URL
 
 	//client.initialize_tracer()
 	client.newClient()
@@ -88,9 +90,9 @@ func (c *Client) sendJobs() {
 
 		var j scheduler.Job
 		j.Id = id
-		fmt.Print(c.maxJobCore)
+		// fmt.Print(c.maxJobCore)
 		j.CoresNeeded = uint(job_dist.Rand()) * c.maxJobCore // uint(rand.Intn(int(c.maxJobCore))) //uint( dist.Rand() * float64(c.maxJobCore))
-		j.Duration = 10
+		j.Duration = 10 * time.Second
 		j.MemoryNeeded = uint(job_dist.Rand()) * c.maxJobMem // uint(rand.Intn(int(c.maxJobMem)))
 
 		id++
@@ -107,7 +109,7 @@ func (c *Client) sendJobs() {
 		for {
 			// each for loop is one minute, lambda jobs per minute is sent
 			jobs := int(time_dist.Rand())
-			fmt.Printf("jobs per minute: %v", jobs)
+			// fmt.Printf("jobs per minute: %v", jobs)
 			time_between_jobs := 60 / jobs
 			i := 0
 			for i < jobs {
@@ -116,6 +118,7 @@ func (c *Client) sendJobs() {
 				//fmt.Printf("cores: %v memory %v\n", dist.Rand(), dist.Rand())
 				j := getJob()
 				SendJob(j)
+				fmt.Printf("Job %v sent\n", j.Id)
 				time.Sleep(time.Duration(time_between_jobs) * time.Second)
 
 			}

@@ -35,5 +35,5 @@ func main() {
 
 	schedPort := os.Args[1]
 
-	client.Run(fmt.Sprintf("http://%v:%v", "localhost", schedPort))
+	client.Run(fmt.Sprintf("http://%v:%v", "localhost", schedPort), fmt.Sprintf("http://%v:%v", "localhost", port))
 }

@@ -187,7 +187,7 @@ func (sched *Scheduler) Fifo() {
 				fmt.Printf("sent job %v to wait queue\n", j.Id)
 
 			}
-			time.Sleep(1 * time.Second)
+			// time.Sleep(1 * time.Second)
 			continue
 		}
 

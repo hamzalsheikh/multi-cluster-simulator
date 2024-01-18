@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net/http"
 	"sandbox/scheduler"
+
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 // the client sends jobs to scheduler through http requests
@@ -21,6 +23,12 @@ func RegisterHandlers() {
 		defer span.End()
 		fmt.Fprintf(w, "Hello!")
 	})
+	http.HandleFunc("/jobAdded", func(w http.ResponseWriter, r *http.Request) {
+		_, span := client.Tracer.Start(r.Context(), "job-added")
+		defer span.End()
+		fmt.Printf("ack!")
+	})
+
 }
 
 func SendJob(j scheduler.Job) {
@@ -30,7 +38,7 @@ func SendJob(j scheduler.Job) {
 	ctx, span := client.Tracer.Start(cont, "sendJob-span")
 	defer span.End()
 
-	// do some pre-processing of job
+	// DO some pre-processing of job
 	buf := new(bytes.Buffer)
 	enc := json.NewEncoder(buf)
 
@@ -43,8 +51,9 @@ func SendJob(j scheduler.Job) {
 
 	req, _ := http.NewRequestWithContext(ctx, "POST", client.SchedulerURL+"/", buf)
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Add("Referer", client.URL)
 
-	httpClient := http.DefaultClient
+	httpClient := http.Client{Transport: otelhttp.NewTransport(http.DefaultTransport)}
 	_, err = httpClient.Do(req)
 
 	//_, err = http.Post(client.SchedulerURL+"/", "application/json", buf)
