@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"net/http"
@@ -9,6 +10,16 @@ import (
 )
 
 func main() {
+
+	// Create trace
+	// TODO: jeager currently implemented, maybe add stdout / straight to file
+	ctx := context.Background()
+
+	traceProvider, tracer := client.CreateTracer(ctx)
+
+	defer func() { _ = traceProvider.Shutdown(ctx) }()
+
+	client.SetTracer(tracer)
 
 	client.RegisterHandlers()
 
@@ -20,9 +31,9 @@ func main() {
 	server.Addr = ":" + port
 
 	go server.ListenAndServe()
-	// input distribution and scheduler info
+	// TODO: input distribution and scheduler info
 
 	schedPort := os.Args[1]
 
-	client.Run(fmt.Sprintf("http://%v:%v", "localhost", schedPort))
+	client.Run(fmt.Sprintf("http://%v:%v", "localhost", schedPort), fmt.Sprintf("http://%v:%v", "localhost", port))
 }
