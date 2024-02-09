@@ -5,7 +5,7 @@ import (
 	"fmt"
 	stlog "log"
 	"net/http"
-	"sandbox/registry"
+	"sandbox/pkg/registry"
 )
 
 func SetClientLogger(serviceURL string, clientService registry.ServiceName) {

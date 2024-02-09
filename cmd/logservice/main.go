@@ -7,9 +7,9 @@ import (
 	"context"
 	"fmt"
 	stlog "log"
+	"sandbox/internal/service"
 	"sandbox/log"
-	"sandbox/registry"
-	"sandbox/service"
+	"sandbox/pkg/registry"
 )
 
 func main() {

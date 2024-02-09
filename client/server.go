@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"sandbox/scheduler"
+	"sandbox/pkg/scheduler"
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"sandbox/registry"
+	"sandbox/pkg/registry"
 )
 
 func main() {

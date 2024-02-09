@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"sandbox/scheduler"
+	"sandbox/pkg/scheduler"
 	"time"
 
 	"go.opentelemetry.io/otel/trace"

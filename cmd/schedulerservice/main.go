@@ -7,9 +7,9 @@ import (
 	stlog "log"
 	"math/rand"
 	"os"
-	"sandbox/registry"
-	"sandbox/scheduler"
-	"sandbox/service"
+	"sandbox/internal/service"
+	"sandbox/pkg/registry"
+	"sandbox/pkg/scheduler"
 )
 
 func main() {
