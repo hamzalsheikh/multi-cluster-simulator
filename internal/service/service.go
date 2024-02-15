@@ -5,7 +5,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"sandbox/pkg/registry"
+
+	"github.com/hamzalsheikh/multi-cluster-simulator/pkg/registry"
 )
 
 func Start(ctx context.Context, host, port string, reg registry.Registration,

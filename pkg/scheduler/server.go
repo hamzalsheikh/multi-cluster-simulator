@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"sandbox/pkg/registry"
 	"sync"
 
+	"github.com/hamzalsheikh/multi-cluster-simulator/pkg/registry"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 

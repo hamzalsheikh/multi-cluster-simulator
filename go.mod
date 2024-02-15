@@ -1,4 +1,4 @@
-module sandbox
+module github.com/hamzalsheikh/multi-cluster-simulator
 
 go 1.21.0
 
