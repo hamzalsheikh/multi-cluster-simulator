@@ -5,7 +5,8 @@ import (
 	"fmt"
 	stlog "log"
 	"net/http"
-	"sandbox/registry"
+
+	"github.com/hamzalsheikh/multi-cluster-simulator/pkg/registry"
 )
 
 func SetClientLogger(serviceURL string, clientService registry.ServiceName) {
