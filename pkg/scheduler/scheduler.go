@@ -64,6 +64,8 @@ func Run(clt Cluster, URL string) {
 		cluster.Nodes[i].RunningJobs = make(map[uint]Job)
 	}
 
+	cluster.SetTotalResources()
+
 	sched.Cluster = &cluster
 	sched.URL = URL
 	switch sched.Policy {
