@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+option go_package = "github.com/hamzalsheikh/multi-cluster-simulator/pkg/trader";
+
+package trader;
+
+//  service
+
+service ResourceChannel {
+
+  rpc Start (StartParams) returns (stream ClusterState) {}
+
+}
+
+message StartParams {}
+
+message ClusterState {
+  uint32 cpu_utilization = 1;
+  uint32 memory_utilization = 2;
+}
