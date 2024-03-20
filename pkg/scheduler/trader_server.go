@@ -1,7 +1,6 @@
 package scheduler
 
 import (
-	"context"
 	"time"
 
 	trader "github.com/hamzalsheikh/multi-cluster-simulator/pkg/trader/gen"
@@ -13,7 +12,13 @@ type traderServer struct {
 	currentClusterState trader.ClusterState
 }
 
-func (s *traderServer) Start(ctx context.Context, stream trader.ResourceChannel_StartServer) error {
+func NewtraderServer() *traderServer {
+	// initialize server
+	s := &traderServer{}
+	return s
+}
+
+func (s *traderServer) Start(params *trader.StartParams, stream trader.ResourceChannel_StartServer) error {
 	for {
 		// get resource utilization from scheduler
 		core, mem := sched.Cluster.GetResourceUtilization()

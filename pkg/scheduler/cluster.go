@@ -36,14 +36,14 @@ func (c *Cluster) SetTotalResources() error {
 func (c *Cluster) GetResourceUtilization() (core uint, mem uint) {
 	c.resourceMutex.Lock()
 	defer c.resourceMutex.Unlock()
-
+	c.CoreUtilization = 0
+	c.MemoryUtilization = 0
 	for _, node := range c.Nodes {
 		node.mutex.Lock()
 		c.CoreUtilization += node.CoresAvailable
 		c.MemoryUtilization += node.MemoryAvailable
 		node.mutex.Unlock()
 	}
-
 	return c.CoreUtilization, c.MemoryUtilization
 }
 

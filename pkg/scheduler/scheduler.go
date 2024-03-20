@@ -63,7 +63,7 @@ func Run(clt Cluster, URL string) {
 		cluster.Nodes[i].mutex = new(sync.Mutex)
 		cluster.Nodes[i].RunningJobs = make(map[uint]Job)
 	}
-
+	cluster.resourceMutex = new(sync.Mutex)
 	cluster.SetTotalResources()
 
 	sched.Cluster = &cluster

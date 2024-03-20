@@ -6,11 +6,15 @@ import (
 	"fmt"
 	stlog "log"
 	"math/rand"
+	"net"
 	"os"
 
 	"github.com/hamzalsheikh/multi-cluster-simulator/internal/service"
 	"github.com/hamzalsheikh/multi-cluster-simulator/pkg/registry"
 	"github.com/hamzalsheikh/multi-cluster-simulator/pkg/scheduler"
+	"google.golang.org/grpc"
+
+	pb "github.com/hamzalsheikh/multi-cluster-simulator/pkg/trader/gen"
 )
 
 func main() {
@@ -36,9 +40,23 @@ func main() {
 	json.Unmarshal(jsonFile, &cluster)
 
 	// choose a port randomly between 1024 to 49151
-	host, port := "localhost", fmt.Sprint(rand.Intn(49151-1024)+1024)
+	portnb := rand.Intn(49151-1025) + 1025
+	host, port := "localhost", fmt.Sprint(portnb)
 	serviceAddr := fmt.Sprintf("http://%v:%v", host, port)
 	scheduler.Run(cluster, serviceAddr)
+
+	// set rpc server
+	lis, err := net.Listen("tcp", fmt.Sprintf("%v:%v", host, portnb-1))
+	if err != nil {
+		// TODO
+		return
+	}
+
+	var opts []grpc.ServerOption
+
+	grpcServer := grpc.NewServer(opts...)
+	pb.RegisterResourceChannelServer(grpcServer, scheduler.NewtraderServer())
+	go grpcServer.Serve(lis)
 
 	var reg registry.Registration
 	reg.ServiceName = registry.Scheduler
