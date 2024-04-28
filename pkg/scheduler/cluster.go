@@ -2,8 +2,11 @@ package scheduler
 
 import (
 	"fmt"
+	"math"
 	"sync"
 	"time"
+
+	pb "github.com/hamzalsheikh/multi-cluster-simulator/pkg/trader/gen"
 )
 
 type Cluster struct {
@@ -33,7 +36,13 @@ func (c *Cluster) SetTotalResources() error {
 	return nil
 }
 
-func (c *Cluster) GetResourceUtilization() (core uint, mem uint) {
+func (c *Cluster) GetTotalResources() (uint, uint) {
+	c.resourceMutex.Lock()
+	defer c.resourceMutex.Unlock()
+	return c.TotalCore, c.TotalMemory
+}
+
+func (c *Cluster) GetResourceUtilization() (uint, uint) {
 	c.resourceMutex.Lock()
 	defer c.resourceMutex.Unlock()
 	c.CoreUtilization = 0
@@ -47,6 +56,53 @@ func (c *Cluster) GetResourceUtilization() (core uint, mem uint) {
 	return c.CoreUtilization, c.MemoryUtilization
 }
 
+func (c *Cluster) AddVirtualNode(node *pb.NodeObject) {
+	var n Node
+	n.Type = "Virtual"
+	n.CoresAvailable = uint(node.Cores)
+	n.MemoryAvailable = uint(node.Memory)
+	n.Time = uint(node.Time)
+	n.URL = node.Url
+	//
+	//c.Nodes = append(c.Nodes, n)
+	sched.ScheduleJobsOnVirtual(&n)
+}
+
+func (c *Cluster) AllocateVirtualNodeResources(req *pb.VirtualNodeRequest) *pb.NodeObject {
+	for _, node := range c.Nodes {
+		if req.Memory <= 0 && req.Cores <= 0 {
+			break
+		}
+		node.mutex.Lock()
+		var mem_diff float64
+		var core_diff float64
+		if req.Memory > 0 {
+			mem_diff = math.Abs(float64(req.Memory) - float64(node.MemoryAvailable))
+		}
+
+		if req.Cores > 0 {
+			core_diff = math.Abs(float64(req.Cores) - float64(node.CoresAvailable))
+		}
+
+		if mem_diff > float64(req.Memory) {
+			req.Memory = 0
+		} else {
+			req.Memory -= uint32(mem_diff)
+		}
+
+		if core_diff > float64(req.Cores) {
+			req.Cores = 0
+		} else {
+			req.Cores -= uint32(core_diff)
+		}
+
+		node.RunJob(Job{Id: uint(req.Id), CoresNeeded: uint(core_diff), MemoryNeeded: uint(mem_diff), Duration: time.Second * time.Duration(req.Time), Ownership: "Foreign"})
+		node.mutex.Unlock()
+	}
+
+	return &pb.NodeObject{Id: req.Id, Url: c.URL}
+}
+
 type Node struct {
 	Id              uint
 	Type            string
@@ -56,6 +112,7 @@ type Node struct {
 	MemoryAvailable uint
 	CoresAvailable  uint
 	RunningJobs     map[uint]Job
+	Time            uint
 	mutex           *sync.Mutex
 }
 

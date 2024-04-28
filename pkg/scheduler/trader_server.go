@@ -43,14 +43,16 @@ func (s *traderServer) Start(params *pb.StartParams, stream pb.ResourceChannel_S
 }
 
 func (s *traderServer) ReceiveVirtualNode(ctx context.Context, node *pb.NodeObject) (*pb.VirtualNodeResponse, error) {
-
+	sched.Cluster.AddVirtualNode(node)
+	return nil, nil
 }
 
 func (s *traderServer) ProvideVirtualNode(ctx context.Context, req *pb.VirtualNodeRequest) (*pb.NodeObject, error) {
-
+	node := sched.Cluster.AllocateVirtualNodeResources(req)
+	return node, nil
 }
 
-func (s *traderServer) ProvideJobs(ctx context.Context, stream pb.ResourceChannel_ProvideJobsServer) error {
+func (s *traderServer) ProvideJobs(req *pb.ProvideJobsRequest, stream pb.ResourceChannel_ProvideJobsServer) error {
 	// Get level one jobs
 	l1 := sched.GetLevel1()
 	BATCH := 20

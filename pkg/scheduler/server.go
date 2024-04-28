@@ -8,13 +8,14 @@ import (
 	"net/http"
 	"net/url"
 	"sync"
+	"time"
 
 	"github.com/hamzalsheikh/multi-cluster-simulator/pkg/registry"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 // create an instance of scheduler
-var sched = Scheduler{WQueueLock: new(sync.Mutex), RQueueLock: new(sync.Mutex), LQueueLock: new(sync.Mutex), BQueueLock: new(sync.Mutex), Policy: FIFO}
+var sched = Scheduler{WQueueLock: new(sync.Mutex), RQueueLock: new(sync.Mutex), LQueueLock: new(sync.Mutex), BQueueLock: new(sync.Mutex)}
 
 func RegisterHandlers() {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -45,6 +46,26 @@ func RegisterHandlers() {
 		req.Header.Set("Content-Type", "application/json")
 		_, err = httpClient.Do(req)
 
+	})
+
+	http.HandleFunc("/delay", func(w http.ResponseWriter, r *http.Request) {
+
+		fmt.Println("Job recieved!")
+		// decode job object
+		var j Job
+		dec := json.NewDecoder(r.Body)
+		err := dec.Decode(&j)
+
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		// add job to level 0 and start wait time timer
+		sched.L0Lock.Lock()
+		j.WaitTime = time.Now()
+		sched.Level0 = append(sched.Level0, j)
+		sched.L0Lock.Unlock()
 	})
 
 	http.HandleFunc("/borrow", func(w http.ResponseWriter, r *http.Request) {
