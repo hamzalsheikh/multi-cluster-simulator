@@ -18,115 +18,126 @@ import (
 // Requires gRPC-Go v1.32.0 or later.
 const _ = grpc.SupportPackageIsVersion7
 
-// ResourceChannelClient is the client API for ResourceChannel service.
+// TraderClient is the client API for Trader service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
-type ResourceChannelClient interface {
-	Start(ctx context.Context, in *StartParams, opts ...grpc.CallOption) (ResourceChannel_StartClient, error)
+type TraderClient interface {
+	// TODO: make this a bidirectional streaming for negotiation ?
+	RequestResource(ctx context.Context, in *ContractRequest, opts ...grpc.CallOption) (*ContractResponse, error)
+	ApproveContract(ctx context.Context, in *ContractResponse, opts ...grpc.CallOption) (*NodeObject, error)
 }
 
-type resourceChannelClient struct {
+type traderClient struct {
 	cc grpc.ClientConnInterface
 }
 
-func NewResourceChannelClient(cc grpc.ClientConnInterface) ResourceChannelClient {
-	return &resourceChannelClient{cc}
+func NewTraderClient(cc grpc.ClientConnInterface) TraderClient {
+	return &traderClient{cc}
 }
 
-func (c *resourceChannelClient) Start(ctx context.Context, in *StartParams, opts ...grpc.CallOption) (ResourceChannel_StartClient, error) {
-	stream, err := c.cc.NewStream(ctx, &ResourceChannel_ServiceDesc.Streams[0], "/trader.ResourceChannel/Start", opts...)
+func (c *traderClient) RequestResource(ctx context.Context, in *ContractRequest, opts ...grpc.CallOption) (*ContractResponse, error) {
+	out := new(ContractResponse)
+	err := c.cc.Invoke(ctx, "/trader.Trader/RequestResource", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &resourceChannelStartClient{stream}
-	if err := x.ClientStream.SendMsg(in); err != nil {
+	return out, nil
+}
+
+func (c *traderClient) ApproveContract(ctx context.Context, in *ContractResponse, opts ...grpc.CallOption) (*NodeObject, error) {
+	out := new(NodeObject)
+	err := c.cc.Invoke(ctx, "/trader.Trader/ApproveContract", in, out, opts...)
+	if err != nil {
 		return nil, err
 	}
-	if err := x.ClientStream.CloseSend(); err != nil {
-		return nil, err
-	}
-	return x, nil
+	return out, nil
 }
 
-type ResourceChannel_StartClient interface {
-	Recv() (*ClusterState, error)
-	grpc.ClientStream
-}
-
-type resourceChannelStartClient struct {
-	grpc.ClientStream
-}
-
-func (x *resourceChannelStartClient) Recv() (*ClusterState, error) {
-	m := new(ClusterState)
-	if err := x.ClientStream.RecvMsg(m); err != nil {
-		return nil, err
-	}
-	return m, nil
-}
-
-// ResourceChannelServer is the server API for ResourceChannel service.
-// All implementations must embed UnimplementedResourceChannelServer
+// TraderServer is the server API for Trader service.
+// All implementations must embed UnimplementedTraderServer
 // for forward compatibility
-type ResourceChannelServer interface {
-	Start(*StartParams, ResourceChannel_StartServer) error
-	mustEmbedUnimplementedResourceChannelServer()
+type TraderServer interface {
+	// TODO: make this a bidirectional streaming for negotiation ?
+	RequestResource(context.Context, *ContractRequest) (*ContractResponse, error)
+	ApproveContract(context.Context, *ContractResponse) (*NodeObject, error)
+	mustEmbedUnimplementedTraderServer()
 }
 
-// UnimplementedResourceChannelServer must be embedded to have forward compatible implementations.
-type UnimplementedResourceChannelServer struct {
+// UnimplementedTraderServer must be embedded to have forward compatible implementations.
+type UnimplementedTraderServer struct {
 }
 
-func (UnimplementedResourceChannelServer) Start(*StartParams, ResourceChannel_StartServer) error {
-	return status.Errorf(codes.Unimplemented, "method Start not implemented")
+func (UnimplementedTraderServer) RequestResource(context.Context, *ContractRequest) (*ContractResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RequestResource not implemented")
 }
-func (UnimplementedResourceChannelServer) mustEmbedUnimplementedResourceChannelServer() {}
+func (UnimplementedTraderServer) ApproveContract(context.Context, *ContractResponse) (*NodeObject, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ApproveContract not implemented")
+}
+func (UnimplementedTraderServer) mustEmbedUnimplementedTraderServer() {}
 
-// UnsafeResourceChannelServer may be embedded to opt out of forward compatibility for this service.
-// Use of this interface is not recommended, as added methods to ResourceChannelServer will
+// UnsafeTraderServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to TraderServer will
 // result in compilation errors.
-type UnsafeResourceChannelServer interface {
-	mustEmbedUnimplementedResourceChannelServer()
+type UnsafeTraderServer interface {
+	mustEmbedUnimplementedTraderServer()
 }
 
-func RegisterResourceChannelServer(s grpc.ServiceRegistrar, srv ResourceChannelServer) {
-	s.RegisterService(&ResourceChannel_ServiceDesc, srv)
+func RegisterTraderServer(s grpc.ServiceRegistrar, srv TraderServer) {
+	s.RegisterService(&Trader_ServiceDesc, srv)
 }
 
-func _ResourceChannel_Start_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(StartParams)
-	if err := stream.RecvMsg(m); err != nil {
-		return err
+func _Trader_RequestResource_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ContractRequest)
+	if err := dec(in); err != nil {
+		return nil, err
 	}
-	return srv.(ResourceChannelServer).Start(m, &resourceChannelStartServer{stream})
+	if interceptor == nil {
+		return srv.(TraderServer).RequestResource(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/trader.Trader/RequestResource",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TraderServer).RequestResource(ctx, req.(*ContractRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
-type ResourceChannel_StartServer interface {
-	Send(*ClusterState) error
-	grpc.ServerStream
+func _Trader_ApproveContract_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ContractResponse)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TraderServer).ApproveContract(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/trader.Trader/ApproveContract",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TraderServer).ApproveContract(ctx, req.(*ContractResponse))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
-type resourceChannelStartServer struct {
-	grpc.ServerStream
-}
-
-func (x *resourceChannelStartServer) Send(m *ClusterState) error {
-	return x.ServerStream.SendMsg(m)
-}
-
-// ResourceChannel_ServiceDesc is the grpc.ServiceDesc for ResourceChannel service.
+// Trader_ServiceDesc is the grpc.ServiceDesc for Trader service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
-var ResourceChannel_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "trader.ResourceChannel",
-	HandlerType: (*ResourceChannelServer)(nil),
-	Methods:     []grpc.MethodDesc{},
-	Streams: []grpc.StreamDesc{
+var Trader_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "trader.Trader",
+	HandlerType: (*TraderServer)(nil),
+	Methods: []grpc.MethodDesc{
 		{
-			StreamName:    "Start",
-			Handler:       _ResourceChannel_Start_Handler,
-			ServerStreams: true,
+			MethodName: "RequestResource",
+			Handler:    _Trader_RequestResource_Handler,
+		},
+		{
+			MethodName: "ApproveContract",
+			Handler:    _Trader_ApproveContract_Handler,
 		},
 	},
+	Streams:  []grpc.StreamDesc{},
 	Metadata: "trader.proto",
 }
