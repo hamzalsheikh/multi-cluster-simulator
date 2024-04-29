@@ -66,6 +66,8 @@ func GetMin(arr []jobState) jobState {
 	return min
 }
 
+// TODO: implement a burst scheduling option for reducing AJCT
+// this implementation efficiently reduces the size of resources requested given a budget constraint
 func calculateContractRequest(client pb.ResourceChannelClient) *pb.ContractRequest {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
