@@ -1,3 +1,9 @@
+/* 
+This file contains communication between traders (clusters)
+*/
+
+
+
 syntax = "proto3";
 
 option go_package = "github.com/hamzalsheikh/multi-cluster-simulator/pkg/trader";
@@ -6,15 +12,37 @@ package trader;
 
 //  service
 
-service ResourceChannel {
-
-  rpc Start (StartParams) returns (stream ClusterState) {}
+service Trader {
+  // TODO: make this a bidirectional streaming for negotiation ? 
+  rpc RequestResource(ContractRequest) returns (ContractResponse) {}
+  rpc ApproveContract(ContractResponse) returns (NodeObject){}
 
 }
 
-message StartParams {}
+message ContractRequest {
+  uint32 cores = 1;
+  uint32 memory = 2;
+  int64  time = 3;
+  uint32 price = 4;
+}
 
-message ClusterState {
-  uint32 cpu_utilization = 1;
-  uint32 memory_utilization = 2;
+message ContractResponse {
+  // this simulates receiving access to a node in a foreign cluster
+  uint32 id = 1;
+  bool   approve = 2;
+  uint32 cores = 3;
+  uint32 memory = 4;
+  int64 time = 5;
+  uint32 price = 6;
+  // string node_url;
+  // struct node_struct; 
+}
+
+message NodeObject {
+  // the virtual node the
+  uint32  id = 1;
+  string  url = 2;
+  uint32  cores = 3;
+  uint32  memory = 4;
+  uint32  time = 5;
 }
