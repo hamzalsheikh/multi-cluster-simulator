@@ -12,6 +12,8 @@ import (
 
 	"github.com/hamzalsheikh/multi-cluster-simulator/pkg/registry"
 	pb "github.com/hamzalsheikh/multi-cluster-simulator/pkg/trader/gen"
+
+	api "go.opentelemetry.io/otel/metric"
 )
 
 type Trader struct {
@@ -24,6 +26,7 @@ type Trader struct {
 	Tracer          trace.Tracer
 	SchedulerClient pb.ResourceChannelClient   // gRPC client
 	TraderClients   map[string]pb.TraderClient // gRPC client
+	meter           api.Meter
 }
 
 func (t *Trader) newTrader() {
@@ -33,11 +36,16 @@ func (t *Trader) newTrader() {
 	t.State.mutex = new(sync.Mutex)
 }
 
+func SetMeter(m api.Meter) {
+	trader.meter = m
+}
+
 type clusterState struct {
 	TotalMemory       uint
 	TotalCore         uint
 	MemoryUtilization uint
 	CoreUtilization   uint
+	AverageWaitTime   int
 	mutex             *sync.Mutex
 }
 
@@ -47,6 +55,7 @@ func (c *clusterState) setState(state clusterState) {
 
 	c.TotalMemory, c.TotalCore = state.TotalMemory, state.TotalCore
 	c.CoreUtilization, c.MemoryUtilization = state.CoreUtilization, state.MemoryUtilization
+	c.AverageWaitTime = state.AverageWaitTime
 
 }
 
@@ -66,6 +75,7 @@ func (c *clusterState) getState() clusterState {
 		TotalCore:         c.TotalCore,
 		MemoryUtilization: c.MemoryUtilization,
 		CoreUtilization:   c.CoreUtilization,
+		AverageWaitTime:   c.AverageWaitTime,
 	}
 }
 
@@ -186,6 +196,7 @@ func (t *Trader) Trade() error {
 
 func (t *Trader) RequestPolicyMonitor() {
 	for {
+		fmt.Printf("in request policy monitor\n")
 		cs := t.State.getState()
 
 		if uint32(cs.CoreUtilization) > t.RequestPolicy.CoreMax || uint32(cs.MemoryUtilization) > t.RequestPolicy.MemoryMax {
@@ -199,6 +210,7 @@ func (t *Trader) RequestPolicyMonitor() {
 var trader Trader
 
 func Run(schedURL string, URL string, schedClient pb.ResourceChannelClient) {
+	fmt.Printf("in trader run!\n")
 	trader.SchedulerURL = schedURL
 	trader.URL = URL
 	trader.SchedulerClient = schedClient
@@ -206,7 +218,7 @@ func Run(schedURL string, URL string, schedClient pb.ResourceChannelClient) {
 	//trader.initialize_tracer()
 	trader.newTrader()
 
-	go getClusterState(trader.SchedulerClient)
+	getClusterState(trader.SchedulerClient)
 	go trader.RequestPolicyMonitor()
 }
 

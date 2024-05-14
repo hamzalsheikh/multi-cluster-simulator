@@ -30,7 +30,7 @@ message ClusterState {
   uint32 memory_utilization = 2;
   optional uint32 total_cpu = 3;
   optional uint32 total_memory = 4;
-
+  int64 average_wait_time = 5;
 }
 
 message VirtualNodeRequest {
