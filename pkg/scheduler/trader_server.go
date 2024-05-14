@@ -27,13 +27,15 @@ func (s *traderServer) Start(params *pb.StartParams, stream pb.ResourceChannel_S
 		if s.ClusterChange {
 
 			core, mem = sched.Cluster.GetTotalResources()
-			*currentClusterState.TotalCpu, *currentClusterState.TotalMemory = uint32(core), uint32(mem)
+			core_32, mem_32 := uint32(core), uint32(mem)
+			currentClusterState.TotalCpu, currentClusterState.TotalMemory = &core_32, &mem_32
 			s.ClusterChange = false
 		}
 		// get resource utilization from scheduler
 		core, mem = sched.Cluster.GetResourceUtilization()
-		*&currentClusterState.CoresUtilization = uint32(core)
+		currentClusterState.CoresUtilization = uint32(core)
 		currentClusterState.MemoryUtilization = uint32(mem)
+		currentClusterState.AverageWaitTime = sched.WaitTime.GetAverage()
 		stream.Send(&currentClusterState)
 		time.Sleep(10 * time.Second)
 	}

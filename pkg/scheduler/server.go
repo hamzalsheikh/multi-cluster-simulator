@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,7 +16,7 @@ import (
 )
 
 // create an instance of scheduler
-var sched = Scheduler{WQueueLock: new(sync.Mutex), RQueueLock: new(sync.Mutex), LQueueLock: new(sync.Mutex), BQueueLock: new(sync.Mutex)}
+var sched = Scheduler{WQueueLock: new(sync.Mutex), RQueueLock: new(sync.Mutex), LQueueLock: new(sync.Mutex), BQueueLock: new(sync.Mutex), L0Lock: new(sync.Mutex), L1Lock: new(sync.Mutex), WaitTime: &WaitTime{Lock: new(sync.Mutex)}}
 
 func RegisterHandlers() {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -65,6 +66,13 @@ func RegisterHandlers() {
 		sched.L0Lock.Lock()
 		j.WaitTime = time.Now()
 		sched.Level0 = append(sched.Level0, j)
+
+		sched.WaitTime.Lock.Lock()
+		sched.WaitTime.JobsMap[j.Id] = 0
+		sched.WaitTime.Total += 1
+		sched.WaitTime.Lock.Unlock()
+		meter, _ := sched.meter.Int64UpDownCounter("jobs_in_queue")
+		meter.Add(context.Background(), 1)
 		sched.L0Lock.Unlock()
 	})
 
