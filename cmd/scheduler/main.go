@@ -12,6 +12,7 @@ import (
 	"github.com/hamzalsheikh/multi-cluster-simulator/internal/service"
 	"github.com/hamzalsheikh/multi-cluster-simulator/pkg/registry"
 	"github.com/hamzalsheikh/multi-cluster-simulator/pkg/scheduler"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 
 	pb "github.com/hamzalsheikh/multi-cluster-simulator/pkg/trader/gen"
@@ -23,12 +24,27 @@ func main() {
 	// TODO: jeager currently implemented, maybe add stdout / straight to file
 	ctx_trace := context.Background()
 
-	traceProvider, tracer := scheduler.CreateTracer(ctx_trace)
+	traceProvider, tracer := service.CreateTracer(ctx_trace)
 
 	defer func() { _ = traceProvider.Shutdown(ctx_trace) }()
 
 	scheduler.SetTracer(tracer)
 
+	meterProvider, err := service.CreateMeterProvider(ctx_trace)
+	if err != nil {
+		fmt.Printf("Couldn't create meter provider")
+		panic(err)
+	}
+
+	// Handle shutdown properly so nothing leaks.
+	defer func() {
+		if err := meterProvider.Shutdown(ctx_trace); err != nil {
+			fmt.Println(err)
+		}
+	}()
+
+	scheduler.SetMeter(meterProvider.Meter("Scheduler"))
+	scheduler.RunMetrics()
 	// get cluster from file
 	jsonFile, err := os.ReadFile(os.Args[1])
 	if err != nil {
@@ -52,9 +68,10 @@ func main() {
 		return
 	}
 
-	var opts []grpc.ServerOption
+	//var opts []grpc.ServerOption
 
-	grpcServer := grpc.NewServer(opts...)
+	grpcServer := grpc.NewServer(grpc.StatsHandler(otelgrpc.NewServerHandler()))
+
 	pb.RegisterResourceChannelServer(grpcServer, scheduler.NewtraderServer())
 	go grpcServer.Serve(lis)
 
@@ -73,12 +90,6 @@ func main() {
 	if err != nil {
 		stlog.Fatal(err)
 	}
-	/*
-		if logProvider, err := registry.GetProvider(registry.LogService); err == nil {
-			fmt.Printf("Logging service found at: %v\n", logProvider)
-			log.SetClientLogger(logProvider, reg.ServiceName)
-		}
-	*/
 	<-ctx.Done()
 	fmt.Println("Shutting down scheduler service")
 }
