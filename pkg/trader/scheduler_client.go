@@ -57,7 +57,7 @@ func GetMin(arr []jobState) jobState {
 	var min jobState
 	var cost uint32 = ^uint32(0)
 	for _, j := range arr {
-		j_cost := j.cores*trader.RequestPolicy.MaximimumCoreCost*uint32(j.time) + j.memory*trader.RequestPolicy.MaximimumMemoryCost*uint32(j.time)
+		j_cost := j.cores*trader.MaximimumCoreCost*uint32(j.time) + j.memory*trader.MaximimumMemoryCost*uint32(j.time)
 		if j_cost < cost {
 			cost = j_cost
 			min = j
@@ -66,9 +66,14 @@ func GetMin(arr []jobState) jobState {
 	return min
 }
 
-// TODO: implement a burst scheduling option for reducing AJCT
-// this implementation efficiently reduces the size of resources requested given a budget constraint
-func calculateContractRequest(client pb.ResourceChannelClient) *pb.ContractRequest {
+type NodeType string
+
+const (
+	smallNode = NodeType("smallNode")
+	fastNode  = NodeType("fastNode")
+)
+
+func calculateContractRequest(client pb.ResourceChannelClient, node NodeType) *pb.ContractRequest {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -103,121 +108,137 @@ func calculateContractRequest(client pb.ResourceChannelClient) *pb.ContractReque
 
 	// Greedy algorithm to populate node size
 	requestChan := make(chan *pb.ContractRequest)
-	go func(nodeChan chan *pb.ContractRequest, jobChan chan *pb.ProvideJobsResponse) {
-		var contract pb.ContractRequest
-		// tracks changes in scheduling on node
-		var atTime []nodeState
-		atTime = append(atTime, nodeState{atTime: 0, cores: 0, memory: 0})
-		for {
-			select {
-			case jobs, ok := <-jobChan:
-				if !ok {
-					requestChan <- &contract
-				}
-				for _, j := range jobs.Jobs {
-					/*
-						// check if node is smaller than job
-						if j.CoresNeeded > node.Cores {
-							newNode.Cores = j.CoresNeeded
-						} else {
-							newNode.Cores = node.Cores
-						}
 
-						if j.MemoryNeeded > node.Memory {
-							newNode.Memory = j.MemoryNeeded
-						} else {
-							newNode.Memory = node.Memory
-						}
-
-						if j.UnixTimeSeconds > node.Time {
-							newNode.Time = j.UnixTimeSeconds
-						} else {
-							newNode.Time = node.Time
-						}
-
-						// check if cost is still within budget
-						if trader.RequestPolicy.Budget < uint(newNode.Cores)*uint(newNode.Time)*trader.RequestPolicy.MaximimumCoreCost+uint(newNode.Memory)*uint(newNode.Time)*trader.RequestPolicy.MaximimumMemoryCost {
-							// return currentNode
-							nodeChan <- &node
-							return
-						}
-					*/
-
-					// job may fit
-					// find minimum cost for adding the job
-
-					// find minimum cost to add the job
-					// the costArray measure the cost of starting the job at each time and pops to a minheap when the job is fully scheduled
-					// minheap is sorted by cost.
-					var costArr []jobState // can be ordered map
-					var currState nodeState
-					for _, t := range atTime {
-
-						currState.cores += t.cores
-						currState.memory += t.memory
-						// loop over costArray, to see if any starttime ended
-						// check for max of each job start time
-						// In cost array, atTime is the potential start time
-						// time, core, memory is the node total will be if the job is scheduled at the atTime
-						for _, c := range costArr {
-							// job cost established
-							if c.endTime > t.atTime {
-								// max total core should be reported for cost evaluation
-								cores := currState.cores - j.CoresNeeded
-								mem := currState.memory - j.MemoryNeeded
-								if cores < 0 && c.cores < contract.Cores-cores {
-									c.cores = contract.Cores - cores
-								}
-								if mem < 0 && c.memory < contract.Memory-mem {
-									c.memory = contract.Memory - mem
-
-								}
-							}
-						}
-
-						// start job atTime
-						var startingJob jobState
-
-						cores := currState.cores - j.CoresNeeded
-						mem := currState.memory - j.MemoryNeeded
-
-						if cores < 0 {
-							startingJob.cores = contract.Cores - cores
-						} else {
-							startingJob.cores = contract.Cores
-						}
-						if mem < 0 {
-							startingJob.memory = contract.Memory - mem
-						} else {
-							startingJob.memory = contract.Memory
-						}
-
-						startingJob.startTime = t.atTime
-						startingJob.endTime = t.atTime + j.UnixTimeSeconds
-						if contract.Time < startingJob.endTime {
-							startingJob.time = startingJob.endTime
-						}
-						costArr = append(costArr, startingJob)
-
-						// if the job doesn't fit and we still have a budget, skip job
-					}
-					min := GetMin(costArr)
-					price := min.cores*trader.RequestPolicy.MaximimumCoreCost*uint32(min.time) + min.memory*trader.RequestPolicy.MaximimumMemoryCost*uint32(min.time)
-					if price < trader.RequestPolicy.Budget {
-						contract.Cores = min.cores
-						contract.Memory = min.memory
-						contract.Time = min.time
-						contract.Price = price
-					}
-				}
-			case <-time.After(10 * time.Second):
-				requestChan <- &contract
-				break
-			}
-		}
-	}(requestChan, jobChan)
+	switch node {
+	case smallNode:
+		go calculateSmallNodeSize(requestChan, jobChan)
+	case fastNode:
+		go calculateFastNodeSize(requestChan, jobChan)
+	}
 
 	return <-requestChan
+}
+
+// calculate a node size with all the jobs starting at time 0 for faster execution
+func calculateFastNodeSize(nodeChan chan *pb.ContractRequest, jobChan chan *pb.ProvideJobsResponse) {
+	var contract pb.ContractRequest
+	for {
+		select {
+		case jobs, ok := <-jobChan:
+			if !ok {
+				nodeChan <- &contract
+			}
+			for _, j := range jobs.Jobs {
+				var newTime int64
+				if j.UnixTimeSeconds > contract.Time {
+					newTime = j.UnixTimeSeconds
+				} else {
+					newTime = contract.Time
+				}
+
+				newCores := contract.Cores + j.CoresNeeded
+				newMem := contract.Memory + j.MemoryNeeded
+				newPrice := newTime*int64(newCores)*int64(trader.MaximimumCoreCost) + int64(trader.MaximimumMemoryCost)*newTime*int64(newMem)
+				if newPrice < int64(trader.Budget) {
+					contract.Cores = newCores
+					contract.Memory = newMem
+					contract.Time = newTime
+					contract.Price = uint32(newPrice)
+				} else {
+					nodeChan <- &contract
+					return
+				}
+			}
+		case <-time.After(10 * time.Second):
+			nodeChan <- &contract
+			return
+
+		}
+	}
+}
+
+// this implementation efficiently reduces the size of resources requested given a budget constraint
+func calculateSmallNodeSize(nodeChan chan *pb.ContractRequest, jobChan chan *pb.ProvideJobsResponse) {
+	var contract pb.ContractRequest
+	// tracks changes in scheduling on node
+	var atTime []nodeState
+	atTime = append(atTime, nodeState{atTime: 0, cores: 0, memory: 0})
+	for {
+		select {
+		case jobs, ok := <-jobChan:
+			if !ok {
+				nodeChan <- &contract
+			}
+			for _, j := range jobs.Jobs {
+
+				// the costArray measure the cost of starting the job at each time and pops to a minheap when the job is fully scheduled
+				// minheap is sorted by cost.
+				var costArr []jobState // can be ordered map
+				var currState nodeState
+				for _, t := range atTime {
+
+					currState.cores += t.cores
+					currState.memory += t.memory
+					// loop over costArray, to see if any starttime ended
+					// check for max of each job start time
+					// In cost array, atTime is the potential start time
+					// time, core, memory is the node total will be if the job is scheduled at the atTime
+					for _, c := range costArr {
+						// job cost established
+						if c.endTime > t.atTime {
+							// max total core should be reported for cost evaluation
+							cores := currState.cores - j.CoresNeeded
+							mem := currState.memory - j.MemoryNeeded
+							if cores < 0 && c.cores < contract.Cores-cores {
+								c.cores = contract.Cores - cores
+							}
+							if mem < 0 && c.memory < contract.Memory-mem {
+								c.memory = contract.Memory - mem
+
+							}
+						}
+					}
+
+					// start job atTime
+					var startingJob jobState
+
+					cores := currState.cores - j.CoresNeeded
+					mem := currState.memory - j.MemoryNeeded
+
+					if cores < 0 {
+						startingJob.cores = contract.Cores - cores
+					} else {
+						startingJob.cores = contract.Cores
+					}
+					if mem < 0 {
+						startingJob.memory = contract.Memory - mem
+					} else {
+						startingJob.memory = contract.Memory
+					}
+
+					startingJob.startTime = t.atTime
+					startingJob.endTime = t.atTime + j.UnixTimeSeconds
+					if contract.Time < startingJob.endTime {
+						startingJob.time = startingJob.endTime
+					}
+					costArr = append(costArr, startingJob)
+
+					// if the job doesn't fit and we still have a budget, skip job
+				}
+				min := GetMin(costArr)
+				price := min.cores*trader.MaximimumCoreCost*uint32(min.time) + min.memory*trader.MaximimumMemoryCost*uint32(min.time)
+				if price < trader.Budget {
+					contract.Cores = min.cores
+					contract.Memory = min.memory
+					contract.Time = min.time
+					contract.Price = price
+				}
+			}
+		case <-time.After(10 * time.Second):
+			nodeChan <- &contract
+			return
+		}
+	}
 }
 
 func getVirtualNode(client pb.ResourceChannelClient, request *pb.VirtualNodeRequest) (*pb.NodeObject, error) {
