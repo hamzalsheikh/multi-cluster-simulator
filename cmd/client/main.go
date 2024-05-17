@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/hamzalsheikh/multi-cluster-simulator/internal/service"
 	"github.com/hamzalsheikh/multi-cluster-simulator/pkg/client"
 )
 
@@ -16,7 +17,7 @@ func main() {
 	// TODO: jeager currently implemented, maybe add stdout / straight to file
 	ctx := context.Background()
 
-	traceProvider, tracer := client.CreateTracer(ctx)
+	traceProvider, tracer := service.CreateTracer(ctx)
 
 	defer func() { _ = traceProvider.Shutdown(ctx) }()
 
