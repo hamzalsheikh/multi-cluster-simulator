@@ -3,6 +3,7 @@ package trader
 import (
 	"container/heap"
 	"fmt"
+	"reflect"
 	"sync"
 	"time"
 
@@ -17,16 +18,19 @@ import (
 )
 
 type Trader struct {
-	Name            string
-	URL             string
-	State           clusterState
-	ApprovePolicy   approvePolicy
-	RequestPolicy   requestPolicy
-	SchedulerURL    string
-	Tracer          trace.Tracer
-	SchedulerClient pb.ResourceChannelClient   // gRPC client
-	TraderClients   map[string]pb.TraderClient // gRPC client
-	meter           api.Meter
+	Name                string
+	URL                 string
+	State               clusterState
+	ApprovePolicy       approvePolicy
+	RequestPolicies     []requestPolicy
+	SchedulerURL        string
+	Tracer              trace.Tracer
+	SchedulerClient     pb.ResourceChannelClient   // gRPC client
+	TraderClients       map[string]pb.TraderClient // gRPC client
+	meter               api.Meter
+	Budget              uint32
+	MaximimumCoreCost   uint32 // per second
+	MaximimumMemoryCost uint32 // per second
 }
 
 func (t *Trader) newTrader() {
@@ -86,12 +90,28 @@ type approvePolicy struct {
 	MinimumMemoryIncentive uint // per second
 }
 
-type requestPolicy struct {
-	MemoryMax           uint32
-	CoreMax             uint32
-	MaximimumCoreCost   uint32 // per second
-	MaximimumMemoryCost uint32 // per second
-	Budget              uint32
+type requestPolicy interface {
+	Broken(cs clusterState) bool
+}
+
+type requestPolicy_Utilization struct {
+	MemoryMax uint32
+	CoreMax   uint32
+	Budget    uint32 // budget per request
+}
+
+func (r requestPolicy_Utilization) Broken(cs clusterState) bool {
+
+	return uint32(cs.CoreUtilization) > r.CoreMax || uint32(cs.MemoryUtilization) > r.MemoryMax
+}
+
+type requestPolicy_WaitTime struct {
+	MaximumWaittime int
+	Budget          int
+}
+
+func (r requestPolicy_WaitTime) Broken(cs clusterState) bool {
+	return cs.AverageWaitTime > r.MaximumWaittime
 }
 
 func (t *Trader) ApproveTrade(contract *pb.ContractRequest) bool {
@@ -132,13 +152,7 @@ func (h *contractResHeap) Pop() any {
 	return x
 }
 
-func (t *Trader) Trade() error {
-	cs := t.State.getState()
-
-	var contract *pb.ContractRequest
-	if uint32(cs.CoreUtilization) > t.RequestPolicy.CoreMax || uint32(cs.MemoryUtilization) > t.RequestPolicy.MemoryMax {
-		contract = calculateContractRequest(trader.SchedulerClient)
-	}
+func (t *Trader) Trade(contract *pb.ContractRequest) error {
 
 	traders, err := registry.GetProviders(registry.Trader)
 	if err != nil {
@@ -198,11 +212,17 @@ func (t *Trader) RequestPolicyMonitor() {
 	for {
 		fmt.Printf("in request policy monitor\n")
 		cs := t.State.getState()
-
-		if uint32(cs.CoreUtilization) > t.RequestPolicy.CoreMax || uint32(cs.MemoryUtilization) > t.RequestPolicy.MemoryMax {
-			t.Trade()
+		for _, policy := range t.RequestPolicies {
+			policyType := reflect.TypeOf(policy)
+			var contract *pb.ContractRequest
+			if policyType == reflect.TypeOf(requestPolicy_Utilization{}) && policy.Broken(cs) {
+				contract = calculateContractRequest(trader.SchedulerClient, smallNode)
+				trader.Trade(contract)
+			} else if policy.Broken(cs) {
+				contract = calculateContractRequest(trader.SchedulerClient, fastNode)
+				trader.Trade(contract)
+			}
 		}
-
 		time.Sleep(10 * time.Second)
 	}
 }
