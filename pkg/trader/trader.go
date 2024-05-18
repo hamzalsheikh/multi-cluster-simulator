@@ -2,6 +2,7 @@ package trader
 
 import (
 	"container/heap"
+	"errors"
 	"fmt"
 	"reflect"
 	"sync"
@@ -181,13 +182,13 @@ func (t *Trader) Trade(contract *pb.ContractRequest) error {
 		wg.Wait()
 		close(ch)
 	}()
-
+loop:
 	for {
 		select {
 		case cont, ok := <-ch:
 			if !ok {
 				// all rountines finished
-				break
+				break loop
 			}
 			// add to heap
 			if cont.Approve {
@@ -196,16 +197,25 @@ func (t *Trader) Trade(contract *pb.ContractRequest) error {
 		case <-time.After(3 * time.Second):
 			// time elapsed
 			// close channel and return?
-			break
+			break loop
 		default:
 			time.Sleep(50 * time.Millisecond)
 		}
 
 	}
 
-	// contracts in heap!
+	// contracts in heap
 
 	// take first contract
+	for h.Len() > 0 {
+		cont := heap.Pop(h).(*pb.ContractResponse)
+		node, err := ApproveContract(trader.TraderClients[cont.Trader], cont)
+		if err == nil {
+			sendVirtualNode(trader.SchedulerClient, node)
+			return nil
+		}
+	}
+	return errors.New("couldn't borrow resources")
 }
 
 func (t *Trader) RequestPolicyMonitor() {

@@ -17,3 +17,8 @@ func RequestResources(client pb.TraderClient, contractReq *pb.ContractRequest, w
 	}
 	ch <- contractRes
 }
+
+func ApproveContract(client pb.TraderClient, contractRsp *pb.ContractResponse) (*pb.NodeObject, error) {
+	ctx := context.Background()
+	return client.ApproveContract(ctx, contractRsp)
+}

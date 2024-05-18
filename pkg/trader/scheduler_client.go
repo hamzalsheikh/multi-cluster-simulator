@@ -249,3 +249,8 @@ func getVirtualNode(client pb.ResourceChannelClient, request *pb.VirtualNodeRequ
 	return virtualNode, err
 
 }
+
+func sendVirtualNode(client pb.ResourceChannelClient, node *pb.NodeObject) {
+	ctx := context.Background()
+	client.ReceiveVirtualNode(ctx, node)
+}
