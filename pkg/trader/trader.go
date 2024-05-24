@@ -29,7 +29,7 @@ type Trader struct {
 	SchedulerClient     pb.ResourceChannelClient   // gRPC client
 	TraderClients       map[string]pb.TraderClient // gRPC client
 	meter               api.Meter
-	Budget              uint32
+	Budget              int
 	MaximimumCoreCost   uint32 // per second
 	MaximimumMemoryCost uint32 // per second
 }
@@ -38,6 +38,22 @@ func (t *Trader) newTrader() {
 	// request cluster information & this can include more information
 	// in the future
 	// key exchange ?
+	t.ApprovePolicy = approvePolicy{
+		MemoryThreshold:        80,
+		CoreThreshold:          80,
+		MinimumCoreIncentive:   -1,
+		MinimumMemoryIncentive: -1,
+	}
+	t.Budget = -1
+
+	t.RequestPolicies = append(t.RequestPolicies,
+		requestPolicy_WaitTime{
+			MaximumWaittime: 10,
+		},
+		requestPolicy_Utilization{
+			MemoryMax: 0.8,
+			CoreMax:   0.8,
+		})
 	t.State.mutex = new(sync.Mutex)
 }
 
@@ -48,9 +64,9 @@ func SetMeter(m api.Meter) {
 type clusterState struct {
 	TotalMemory       uint
 	TotalCore         uint
-	MemoryUtilization uint
-	CoreUtilization   uint
-	AverageWaitTime   int
+	MemoryUtilization float32
+	CoreUtilization   float32
+	AverageWaitTime   float64
 	mutex             *sync.Mutex
 }
 
@@ -64,11 +80,11 @@ func (c *clusterState) setState(state clusterState) {
 
 }
 
-func (c *clusterState) setUtilization(core, mem uint) {
+func (c *clusterState) setUtilization(state *pb.ClusterState) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
-	c.CoreUtilization, c.MemoryUtilization = core, mem
+	c.CoreUtilization, c.MemoryUtilization, c.AverageWaitTime = state.CoresUtilization, state.MemoryUtilization, state.AverageWaitTime
 }
 
 func (c *clusterState) getState() clusterState {
@@ -85,10 +101,10 @@ func (c *clusterState) getState() clusterState {
 }
 
 type approvePolicy struct {
-	MemoryThreshold        uint
-	CoreThreshold          uint
-	MinimumCoreIncentive   uint // per second
-	MinimumMemoryIncentive uint // per second
+	MemoryThreshold        float32
+	CoreThreshold          float32
+	MinimumCoreIncentive   int // per second
+	MinimumMemoryIncentive int // per second
 }
 
 type requestPolicy interface {
@@ -96,18 +112,18 @@ type requestPolicy interface {
 }
 
 type requestPolicy_Utilization struct {
-	MemoryMax uint32
-	CoreMax   uint32
+	MemoryMax float32
+	CoreMax   float32
 	Budget    uint32 // budget per request
 }
 
 func (r requestPolicy_Utilization) Broken(cs clusterState) bool {
 
-	return uint32(cs.CoreUtilization) > r.CoreMax || uint32(cs.MemoryUtilization) > r.MemoryMax
+	return cs.CoreUtilization > r.CoreMax || cs.MemoryUtilization > r.MemoryMax
 }
 
 type requestPolicy_WaitTime struct {
-	MaximumWaittime int
+	MaximumWaittime float64
 	Budget          int
 }
 
@@ -119,11 +135,14 @@ func (t *Trader) ApproveTrade(contract *pb.ContractRequest) bool {
 	// check if memory
 	clusterState := t.State.getState()
 	if clusterState.CoreUtilization < t.ApprovePolicy.CoreThreshold && clusterState.MemoryUtilization < t.ApprovePolicy.MemoryThreshold {
-		availableMem := clusterState.TotalMemory - (clusterState.TotalMemory * clusterState.MemoryUtilization)
-		availableCore := clusterState.TotalCore - (clusterState.TotalCore * clusterState.CoreUtilization)
-		if availableCore >= uint(contract.Cores) && availableMem >= uint(contract.Memory) {
+		availableMem := float32(clusterState.TotalMemory) - (float32(clusterState.TotalMemory) * clusterState.MemoryUtilization)
+		availableCore := float32(clusterState.TotalCore) - (float32(clusterState.TotalCore) * clusterState.CoreUtilization)
+		if availableCore >= float32(contract.Cores) && availableMem >= float32(contract.Memory) {
 			// check incentive
-			return true
+			// If traders are not trading with incentives, price is expected to be 0 and the minimum price would be negative
+			if int(contract.Price) >= t.ApprovePolicy.MinimumCoreIncentive*int(contract.Cores)*int(contract.Time)+t.ApprovePolicy.MinimumMemoryIncentive*int(contract.Memory)*int(contract.Time) {
+				return true
+			}
 		}
 	}
 	return false
@@ -215,7 +234,7 @@ loop:
 			return nil
 		}
 	}
-	return errors.New("couldn't borrow resources")
+	return errors.New("couldn't acquire resources")
 }
 
 func (t *Trader) RequestPolicyMonitor() {

@@ -16,7 +16,7 @@ import (
 )
 
 // create an instance of scheduler
-var sched = Scheduler{WQueueLock: new(sync.Mutex), RQueueLock: new(sync.Mutex), LQueueLock: new(sync.Mutex), BQueueLock: new(sync.Mutex), L0Lock: new(sync.Mutex), L1Lock: new(sync.Mutex), WaitTime: &WaitTime{Lock: new(sync.Mutex)}}
+var sched = Scheduler{WQueueLock: new(sync.Mutex), RQueueLock: new(sync.Mutex), LQueueLock: new(sync.Mutex), BQueueLock: new(sync.Mutex), L0Lock: new(sync.Mutex), L1Lock: new(sync.Mutex), WaitTime: &WaitTime{Lock: new(sync.Mutex), JobsMap: make(map[uint]int64)}}
 
 func RegisterHandlers() {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -61,6 +61,8 @@ func RegisterHandlers() {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
+
+		j.Duration = j.Duration * time.Second
 
 		// add job to level 0 and start wait time timer
 		sched.L0Lock.Lock()

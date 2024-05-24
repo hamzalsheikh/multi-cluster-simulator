@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	pb "github.com/hamzalsheikh/multi-cluster-simulator/pkg/trader/gen"
@@ -23,7 +24,7 @@ func NewtraderServer() *traderServer {
 func (s *traderServer) Start(params *pb.StartParams, stream pb.ResourceChannel_StartServer) error {
 	for {
 		var currentClusterState pb.ClusterState
-		var core, mem uint
+		var core, mem uint32
 		if s.ClusterChange {
 
 			core, mem = sched.Cluster.GetTotalResources()
@@ -32,9 +33,10 @@ func (s *traderServer) Start(params *pb.StartParams, stream pb.ResourceChannel_S
 			s.ClusterChange = false
 		}
 		// get resource utilization from scheduler
-		core, mem = sched.Cluster.GetResourceUtilization()
-		currentClusterState.CoresUtilization = uint32(core)
-		currentClusterState.MemoryUtilization = uint32(mem)
+		core_util, mem_util := sched.Cluster.GetResourceUtilization()
+		fmt.Printf("In scheduler util: core %v mem %v\n", core_util, mem_util)
+		currentClusterState.CoresUtilization = core_util
+		currentClusterState.MemoryUtilization = mem_util
 		currentClusterState.AverageWaitTime = sched.WaitTime.GetAverage()
 		stream.Send(&currentClusterState)
 		time.Sleep(10 * time.Second)

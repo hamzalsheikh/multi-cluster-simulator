@@ -71,8 +71,8 @@ func (c *Client) setMaxCluster() {
 		if node.Memory > maxMem {
 			maxMem = node.Memory
 		}
-		if len(node.Cores) > int(maxCores) {
-			maxCores = uint(len(node.Cores))
+		if node.Cores > maxCores {
+			maxCores = node.Cores
 		}
 	}
 

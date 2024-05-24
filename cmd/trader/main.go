@@ -10,6 +10,7 @@ import (
 	"github.com/hamzalsheikh/multi-cluster-simulator/internal/service"
 	"github.com/hamzalsheikh/multi-cluster-simulator/pkg/registry"
 	"github.com/hamzalsheikh/multi-cluster-simulator/pkg/trader"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
@@ -47,7 +48,7 @@ func main() {
 	fmt.Printf("Trader port is %v\n", port)
 
 	schedPort := os.Args[1]
-	conn, err := grpc.Dial(fmt.Sprintf("%v:%v", host, schedPort), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(fmt.Sprintf("%v:%v", host, schedPort), grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
 	if err != nil {
 		fmt.Println(err)
 		return

@@ -11,12 +11,12 @@ import (
 
 type Cluster struct {
 	Id                uint
-	Nodes             []Node
+	Nodes             []*Node
 	URL               string
-	TotalMemory       uint
-	TotalCore         uint
-	MemoryUtilization uint
-	CoreUtilization   uint
+	TotalMemory       uint32
+	TotalCore         uint32
+	MemoryUtilization float32
+	CoreUtilization   float32
 	resourceMutex     *sync.Mutex
 }
 
@@ -29,31 +29,34 @@ func (c *Cluster) SetTotalResources() error {
 	c.TotalCore = 0
 	c.TotalMemory = 0
 	for _, node := range c.Nodes {
-		c.TotalCore += uint(len(node.Cores))
-		c.TotalMemory += node.Memory
+		c.TotalCore += uint32(node.Cores)
+		c.TotalMemory += uint32(node.Memory)
 	}
 
 	return nil
 }
 
-func (c *Cluster) GetTotalResources() (uint, uint) {
-	c.resourceMutex.Lock()
-	defer c.resourceMutex.Unlock()
+func (c *Cluster) GetTotalResources() (uint32, uint32) {
 	return c.TotalCore, c.TotalMemory
 }
 
-func (c *Cluster) GetResourceUtilization() (uint, uint) {
+func (c *Cluster) GetResourceUtilization() (float32, float32) {
 	c.resourceMutex.Lock()
 	defer c.resourceMutex.Unlock()
+
+	fmt.Printf("in GetResourceUtilization()\n")
 	c.CoreUtilization = 0
 	c.MemoryUtilization = 0
 	for _, node := range c.Nodes {
 		node.mutex.Lock()
-		c.CoreUtilization += node.CoresAvailable
-		c.MemoryUtilization += node.MemoryAvailable
+		c.CoreUtilization += (float32(node.Cores) - float32(node.CoresAvailable))
+		c.MemoryUtilization += (float32(node.Memory) - float32(node.MemoryAvailable))
 		node.mutex.Unlock()
 	}
-	return c.CoreUtilization, c.MemoryUtilization
+	total_core, total_mem := c.GetTotalResources()
+	fmt.Printf("util %v %v\n", c.CoreUtilization, c.MemoryUtilization)
+	fmt.Printf("%v %v\n", total_core, total_mem)
+	return c.CoreUtilization / float32(total_core), c.MemoryUtilization / float32(total_mem)
 }
 
 func (c *Cluster) AddVirtualNode(node *pb.NodeObject) {
@@ -108,7 +111,7 @@ type Node struct {
 	Type            string
 	URL             string
 	Memory          uint
-	Cores           []uint
+	Cores           uint
 	MemoryAvailable uint
 	CoresAvailable  uint
 	RunningJobs     map[uint]Job
@@ -125,7 +128,8 @@ func (n *Node) RunJob(j Job) {
 	n.CoresAvailable -= j.CoresNeeded
 	n.MemoryAvailable -= j.MemoryNeeded
 	n.mutex.Unlock()
-	fmt.Printf("node %v running job %v\n", n.Id, j.Id)
+	fmt.Printf("node %v running job %v cores: %v mem: %v \n", n.Id, j.Id, n.CoresAvailable, n.MemoryAvailable)
+
 	time.Sleep(j.Duration)
 
 	n.mutex.Lock()
@@ -133,7 +137,7 @@ func (n *Node) RunJob(j Job) {
 	n.CoresAvailable += j.CoresNeeded
 	n.MemoryAvailable += j.MemoryNeeded
 	n.mutex.Unlock()
-	fmt.Printf("node %v finished job %v\n", n.Id, j.Id)
+	fmt.Printf("node %v finished job %v cores: %v mem: %v\n", n.Id, j.Id, n.CoresAvailable, n.MemoryAvailable)
 	// inform scheduler that you're done
 	// should be a http request, but call the function directly for now
 	sched.JobFinished(j)

@@ -45,17 +45,17 @@ const (
 // Wait time in Milliseconds
 type WaitTime struct {
 	Lock      *sync.Mutex
-	Average   int64
+	Average   float64
 	Total     int64
 	JobsCount int64
 	JobsMap   map[uint]int64
 }
 
-func (w *WaitTime) GetAverage() int64 {
+func (w *WaitTime) GetAverage() float64 {
 	w.Lock.Lock()
 	defer w.Lock.Unlock()
 	if w.JobsCount != 0 {
-		return w.Total / w.JobsCount
+		return float64(w.Total) / float64(w.JobsCount)
 	}
 	return 0
 }
@@ -328,14 +328,14 @@ func (sched *Scheduler) Delay() {
 			// check if job got scheduled
 
 			sched.WaitTime.Lock.Lock()
-			sched.WaitTime.Total -= sched.WaitTime.JobsMap[sched.Level1[0].Id]
-			sched.WaitTime.JobsMap[sched.Level1[0].Id] = time.Since(sched.Level1[0].WaitTime).Milliseconds()
-			sched.WaitTime.Total += sched.WaitTime.JobsMap[sched.Level1[0].Id]
+			sched.WaitTime.Total -= sched.WaitTime.JobsMap[sched.Level0[0].Id]
+			sched.WaitTime.JobsMap[sched.Level0[0].Id] = time.Since(sched.Level0[0].WaitTime).Milliseconds()
+			sched.WaitTime.Total += sched.WaitTime.JobsMap[sched.Level0[0].Id]
 			if err == nil {
 				// remove job from level1 queue
 				fmt.Printf("scheduled job %v from level 0\n", sched.Level0[0].Id)
 
-				delete(sched.WaitTime.JobsMap, sched.Level1[0].Id)
+				delete(sched.WaitTime.JobsMap, sched.Level0[0].Id)
 				sched.Level0 = sched.Level0[1:]
 				counter.Add(context.Background(), -1)
 			} else {

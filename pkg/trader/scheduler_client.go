@@ -10,8 +10,11 @@ import (
 )
 
 func getClusterState(client pb.ResourceChannelClient) {
+	fmt.Print("in getCluster state\n")
 	ctx := context.Background()
 	stream, err := client.Start(ctx, nil)
+	ctx, span := trader.Tracer.Start(ctx, "test-span")
+	defer span.End()
 	if err != nil {
 		// TODO: error handling
 		fmt.Println(err)
@@ -20,8 +23,10 @@ func getClusterState(client pb.ResourceChannelClient) {
 	for {
 		state, err := stream.Recv()
 		if err == io.EOF {
+			fmt.Println(err)
 			break
 		}
+
 		if err != nil {
 			fmt.Println(err)
 			return
@@ -29,11 +34,13 @@ func getClusterState(client pb.ResourceChannelClient) {
 
 		if state.GetTotalCpu() != 0 {
 			// set whole state
-			trader.State.setState(clusterState{TotalMemory: uint(*state.TotalMemory), TotalCore: uint(*state.TotalCpu), MemoryUtilization: uint(state.MemoryUtilization), CoreUtilization: uint(state.CoresUtilization)})
+			trader.State.setState(clusterState{TotalMemory: uint(*state.TotalMemory), TotalCore: uint(*state.TotalCpu), MemoryUtilization: state.MemoryUtilization, CoreUtilization: state.CoresUtilization, AverageWaitTime: state.AverageWaitTime})
 		} else {
 			// set utilization
-			trader.State.setUtilization(uint(state.CoresUtilization), uint(state.MemoryUtilization))
+			trader.State.setUtilization(state)
 		}
+
+		fmt.Printf("receiving cluster state from scheduler, %v\n", state.CoresUtilization)
 	}
 
 }
@@ -139,7 +146,7 @@ func calculateFastNodeSize(nodeChan chan *pb.ContractRequest, jobChan chan *pb.P
 				newCores := contract.Cores + j.CoresNeeded
 				newMem := contract.Memory + j.MemoryNeeded
 				newPrice := newTime*int64(newCores)*int64(trader.MaximimumCoreCost) + int64(trader.MaximimumMemoryCost)*newTime*int64(newMem)
-				if newPrice < int64(trader.Budget) {
+				if newPrice < int64(trader.Budget) || trader.Budget < 0 {
 					contract.Cores = newCores
 					contract.Memory = newMem
 					contract.Time = newTime
@@ -227,7 +234,7 @@ func calculateSmallNodeSize(nodeChan chan *pb.ContractRequest, jobChan chan *pb.
 				}
 				min := GetMin(costArr)
 				price := min.cores*trader.MaximimumCoreCost*uint32(min.time) + min.memory*trader.MaximimumMemoryCost*uint32(min.time)
-				if price < trader.Budget {
+				if int(price) < trader.Budget {
 					contract.Cores = min.cores
 					contract.Memory = min.memory
 					contract.Time = min.time

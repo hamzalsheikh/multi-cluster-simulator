@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	stlog "log"
-	"math/rand"
 	"net"
 	"os"
 
@@ -56,7 +55,8 @@ func main() {
 	json.Unmarshal(jsonFile, &cluster)
 
 	// choose a port randomly between 1024 to 49151
-	portnb := rand.Intn(49151-1025) + 1025
+	//portnb := rand.Intn(49151-1025) + 1025
+	portnb := 4444
 	host, port := "localhost", fmt.Sprint(portnb)
 	serviceAddr := fmt.Sprintf("http://%v:%v", host, port)
 	scheduler.Run(cluster, serviceAddr)

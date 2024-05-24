@@ -4,7 +4,7 @@
         {
             "Id": 1,
             "Memory": 100,
-            "Cores": [1,2,3,4,5,6,7,8,9,10],
+            "Cores": 100,
             "MemoryAvailable": 100,
             "CoresAvailable": 100
         }]
