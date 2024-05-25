@@ -71,7 +71,7 @@ func RegisterHandlers() {
 
 		sched.WaitTime.Lock.Lock()
 		sched.WaitTime.JobsMap[j.Id] = 0
-		sched.WaitTime.Total += 1
+		sched.WaitTime.JobsCount += 1
 		sched.WaitTime.Lock.Unlock()
 		meter, _ := sched.meter.Int64UpDownCounter("jobs_in_queue")
 		meter.Add(context.Background(), 1)

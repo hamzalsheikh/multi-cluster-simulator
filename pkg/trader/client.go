@@ -7,8 +7,7 @@ import (
 	pb "github.com/hamzalsheikh/multi-cluster-simulator/pkg/trader/gen"
 )
 
-func RequestResources(client pb.TraderClient, contractReq *pb.ContractRequest, wg *sync.WaitGroup, ch chan<- *pb.ContractResponse) {
-	ctx := context.Background()
+func RequestResources(ctx context.Context, client pb.TraderClient, contractReq *pb.ContractRequest, wg *sync.WaitGroup, ch chan<- *pb.ContractResponse) {
 	defer wg.Done()
 
 	contractRes, err := client.RequestResource(ctx, contractReq)
@@ -18,7 +17,6 @@ func RequestResources(client pb.TraderClient, contractReq *pb.ContractRequest, w
 	ch <- contractRes
 }
 
-func ApproveContract(client pb.TraderClient, contractRsp *pb.ContractResponse) (*pb.NodeObject, error) {
-	ctx := context.Background()
+func ApproveContract(ctx context.Context, client pb.TraderClient, contractRsp *pb.ContractResponse) (*pb.NodeObject, error) {
 	return client.ApproveContract(ctx, contractRsp)
 }

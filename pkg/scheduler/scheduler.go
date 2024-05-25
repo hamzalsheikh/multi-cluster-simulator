@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/rs/zerolog"
 	api "go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -30,9 +31,10 @@ type Scheduler struct {
 	SchedulingAlgorithm SchedulingType
 	Policy              Policy
 	Cluster             *Cluster
+	WaitTime            *WaitTime
 	tracer              trace.Tracer
 	meter               api.Meter
-	WaitTime            *WaitTime
+	logger              zerolog.Logger
 }
 
 type SchedulingType string
@@ -46,7 +48,7 @@ const (
 type WaitTime struct {
 	Lock      *sync.Mutex
 	Average   float64
-	Total     int64
+	TotalTime int64
 	JobsCount int64
 	JobsMap   map[uint]int64
 }
@@ -55,7 +57,7 @@ func (w *WaitTime) GetAverage() float64 {
 	w.Lock.Lock()
 	defer w.Lock.Unlock()
 	if w.JobsCount != 0 {
-		return float64(w.Total) / float64(w.JobsCount)
+		return float64(w.TotalTime) / float64(w.JobsCount)
 	}
 	return 0
 }
@@ -89,6 +91,10 @@ func SetTracer(t trace.Tracer) {
 
 func SetMeter(m api.Meter) {
 	sched.meter = m
+}
+
+func SetLogger(logger zerolog.Logger) {
+	sched.logger = logger
 }
 
 // infinite loop to start scheduling
@@ -132,8 +138,9 @@ func (sched *Scheduler) ScheduleJob(j Job) error {
 	return errors.New("not enough resources in cluster")
 }
 
-func (sched *Scheduler) ScheduleJobsOnVirtual(node *Node) {
+func (sched *Scheduler) ScheduleJobsOnVirtual(ctx context.Context, node *Node) {
 	// Can introduce network delay simulation
+	sched.logger.Info().Msg("in ScheduleJobsOnVirtual()")
 	sched.L1Lock.Lock()
 	for _, j := range sched.Level1 {
 		node.mutex.Lock()
@@ -194,11 +201,14 @@ func (sched *Scheduler) Lend(j Job) error {
 }
 
 func (sched *Scheduler) GetLevel1() []Job {
+	sched.logger.Info().Msg("in GetLevel1()")
 	sched.L1Lock.Lock()
 	defer sched.L1Lock.Unlock()
 
-	var l1 []Job
+	var l1 = make([]Job, len(sched.Level1))
+
 	copy(l1, sched.Level1)
+	sched.logger.Info().Msgf("level1: %v l1: %v", len(sched.Level1), len(l1))
 	return l1
 }
 
@@ -297,9 +307,9 @@ func (sched *Scheduler) Delay() {
 				err := sched.ScheduleJob(sched.Level1[i])
 				// check if job got scheduled
 				sched.WaitTime.Lock.Lock()
-				sched.WaitTime.Total -= sched.WaitTime.JobsMap[sched.Level1[i].Id]
+				sched.WaitTime.TotalTime -= sched.WaitTime.JobsMap[sched.Level1[i].Id]
 				sched.WaitTime.JobsMap[sched.Level1[i].Id] = time.Since(sched.Level1[i].WaitTime).Milliseconds()
-				sched.WaitTime.Total += sched.WaitTime.JobsMap[sched.Level1[i].Id]
+				sched.WaitTime.TotalTime += sched.WaitTime.JobsMap[sched.Level1[i].Id]
 				if err == nil {
 					// Send telemetry
 					waitTimeMeter.Record(context.Background(), sched.Level1[i].WaitTime.UnixMilli())
@@ -328,9 +338,9 @@ func (sched *Scheduler) Delay() {
 			// check if job got scheduled
 
 			sched.WaitTime.Lock.Lock()
-			sched.WaitTime.Total -= sched.WaitTime.JobsMap[sched.Level0[0].Id]
+			sched.WaitTime.TotalTime -= sched.WaitTime.JobsMap[sched.Level0[0].Id]
 			sched.WaitTime.JobsMap[sched.Level0[0].Id] = time.Since(sched.Level0[0].WaitTime).Milliseconds()
-			sched.WaitTime.Total += sched.WaitTime.JobsMap[sched.Level0[0].Id]
+			sched.WaitTime.TotalTime += sched.WaitTime.JobsMap[sched.Level0[0].Id]
 			if err == nil {
 				// remove job from level1 queue
 				fmt.Printf("scheduled job %v from level 0\n", sched.Level0[0].Id)

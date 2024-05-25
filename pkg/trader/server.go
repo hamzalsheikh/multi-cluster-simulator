@@ -2,6 +2,7 @@ package trader
 
 import (
 	"context"
+	"math/rand"
 	"sync"
 	"time"
 
@@ -13,7 +14,7 @@ import (
 type traderServer struct {
 	pb.UnimplementedTraderServer
 
-	currentContract pb.ContractResponse
+	currentContract *pb.ContractResponse
 	currLock        *sync.Mutex
 	id              uint32
 }
@@ -21,31 +22,37 @@ type traderServer struct {
 func NewTraderServer() *traderServer {
 	// initialize server
 	s := &traderServer{}
+	s.currLock = new(sync.Mutex)
+	s.id = rand.Uint32()
+	s.currentContract = &pb.ContractResponse{}
 	return s
 }
 
 func (s *traderServer) RequestResource(ctx context.Context, contract *pb.ContractRequest) (*pb.ContractResponse, error) {
-
+	trader.Logger.Info().Msg("In RequestResource()")
 	// trade in progress, refuse to start new trader
 	s.currLock.Lock()
-	if s.currentContract.Id == 0 {
+	if s.currentContract.Id != 0 {
 		s.currLock.Unlock()
+		trader.Logger.Info().Msg("trader in progress, can't initiate new trade")
 		return &pb.ContractResponse{Approve: false}, nil
 	}
 	s.currLock.Unlock()
 	// consult policy
-	approve := trader.ApproveTrade(contract)
+	approve := trader.ApproveTrade(ctx, contract)
 
-	contractResponse := pb.ContractResponse{Id: s.id, Approve: approve}
+	contractResponse := pb.ContractResponse{Id: s.id, Approve: approve, Trader: trader.URL}
+	s.currentContract = &contractResponse
 	s.id++
 
 	go func() {
-		time.Sleep(time.Second * 10)
+		time.Sleep(time.Second * 20)
 		// check if current response is still there, delete initialize
+		trader.Logger.Info().Msg("time limit for RequestResource() reached, deleting currentContract")
 		s.currLock.Lock()
 		defer s.currLock.Unlock()
-		if s.currentContract.Id != 0 {
-			s.currentContract = pb.ContractResponse{}
+		if s.currentContract.Id == contractResponse.Id {
+			s.currentContract = &pb.ContractResponse{}
 		}
 	}()
 
@@ -54,18 +61,22 @@ func (s *traderServer) RequestResource(ctx context.Context, contract *pb.Contrac
 }
 
 func (s *traderServer) ApproveContract(ctx context.Context, contract *pb.ContractResponse) (*pb.NodeObject, error) {
+	trader.Logger.Info().Msgf("In ApproveContract() id %v", contract.Id)
 	s.currLock.Lock()
 	defer s.currLock.Unlock()
 
-	c := s.currentContract
-	if c.Id != contract.Id {
+	if s.currentContract.Id != contract.Id {
 		return &pb.NodeObject{}, status.Errorf(codes.DeadlineExceeded, "Time limit exceeded, contract denied")
 	}
 
 	// contract valid, request resources from scheduler
-	virtualNode, err := getVirtualNode(trader.SchedulerClient, &pb.VirtualNodeRequest{Cores: contract.Cores, Memory: contract.Memory, Time: contract.Time})
+	trader.Logger.Info().Msg("getting node from scheduler")
+	virtualNode, err := getVirtualNode(ctx, trader.SchedulerClient, &pb.VirtualNodeRequest{Cores: contract.Cores, Memory: contract.Memory, Time: contract.Time})
 
+	if err != nil {
+		trader.Logger.Error().Err(err).Msg("couldn't get virtual node from scheduler")
+	}
 	// reinitialize currentContract for future activity
-	s.currentContract = pb.ContractResponse{}
+	s.currentContract = &pb.ContractResponse{}
 	return virtualNode, err
 }

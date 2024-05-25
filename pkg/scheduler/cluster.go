@@ -1,6 +1,8 @@
 package scheduler
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"math"
 	"sync"
@@ -59,19 +61,22 @@ func (c *Cluster) GetResourceUtilization() (float32, float32) {
 	return c.CoreUtilization / float32(total_core), c.MemoryUtilization / float32(total_mem)
 }
 
-func (c *Cluster) AddVirtualNode(node *pb.NodeObject) {
+func (c *Cluster) AddVirtualNode(ctx context.Context, node *pb.NodeObject) {
+	sched.logger.Info().Msg("in AddVirtualNode()")
 	var n Node
 	n.Type = "Virtual"
 	n.CoresAvailable = uint(node.Cores)
 	n.MemoryAvailable = uint(node.Memory)
 	n.Time = uint(node.Time)
 	n.URL = node.Url
-	//
+	n.mutex = new(sync.Mutex)
+	sched.logger.Info().Msgf("created node %+v", n)
 	//c.Nodes = append(c.Nodes, n)
-	sched.ScheduleJobsOnVirtual(&n)
+	sched.ScheduleJobsOnVirtual(ctx, &n)
 }
 
-func (c *Cluster) AllocateVirtualNodeResources(req *pb.VirtualNodeRequest) *pb.NodeObject {
+func (c *Cluster) AllocateVirtualNodeResources(req *pb.VirtualNodeRequest) error {
+	sched.logger.Info().Msg("in AllocateVirtualNodeResources()")
 	for _, node := range c.Nodes {
 		if req.Memory <= 0 && req.Cores <= 0 {
 			break
@@ -102,8 +107,12 @@ func (c *Cluster) AllocateVirtualNodeResources(req *pb.VirtualNodeRequest) *pb.N
 		node.RunJob(Job{Id: uint(req.Id), CoresNeeded: uint(core_diff), MemoryNeeded: uint(mem_diff), Duration: time.Second * time.Duration(req.Time), Ownership: "Foreign"})
 		node.mutex.Unlock()
 	}
-
-	return &pb.NodeObject{Id: req.Id, Url: c.URL}
+	if req.Cores > 0 || req.Memory > 0 {
+		// generally speaking this should not happen
+		return errors.New("couldn't schedule enough resources")
+	}
+	sched.logger.Info().Msg("successfully allocated resources for trade")
+	return nil
 }
 
 type Node struct {

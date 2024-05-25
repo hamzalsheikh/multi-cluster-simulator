@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	stlog "log"
+	"math/rand"
 	"net"
 	"os"
 
@@ -44,6 +45,9 @@ func main() {
 
 	scheduler.SetMeter(meterProvider.Meter("Scheduler"))
 	scheduler.RunMetrics()
+
+	scheduler.SetLogger(service.CreateLogger())
+
 	// get cluster from file
 	jsonFile, err := os.ReadFile(os.Args[1])
 	if err != nil {
@@ -55,8 +59,7 @@ func main() {
 	json.Unmarshal(jsonFile, &cluster)
 
 	// choose a port randomly between 1024 to 49151
-	//portnb := rand.Intn(49151-1025) + 1025
-	portnb := 4444
+	portnb := rand.Intn(49151-1025) + 1025
 	host, port := "localhost", fmt.Sprint(portnb)
 	serviceAddr := fmt.Sprintf("http://%v:%v", host, port)
 	scheduler.Run(cluster, serviceAddr)
@@ -64,7 +67,7 @@ func main() {
 	// set rpc server
 	lis, err := net.Listen("tcp", fmt.Sprintf("%v:%v", host, portnb-1))
 	if err != nil {
-		// TODO
+		fmt.Println(err)
 		return
 	}
 

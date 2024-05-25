@@ -2,18 +2,21 @@ package trader
 
 import (
 	"container/heap"
+	"context"
 	"errors"
 	"fmt"
 	"reflect"
 	"sync"
 	"time"
 
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/hamzalsheikh/multi-cluster-simulator/pkg/registry"
 	pb "github.com/hamzalsheikh/multi-cluster-simulator/pkg/trader/gen"
+	"github.com/rs/zerolog"
 
 	api "go.opentelemetry.io/otel/metric"
 )
@@ -25,22 +28,25 @@ type Trader struct {
 	ApprovePolicy       approvePolicy
 	RequestPolicies     []requestPolicy
 	SchedulerURL        string
-	Tracer              trace.Tracer
 	SchedulerClient     pb.ResourceChannelClient   // gRPC client
 	TraderClients       map[string]pb.TraderClient // gRPC client
-	meter               api.Meter
 	Budget              int
 	MaximimumCoreCost   uint32 // per second
 	MaximimumMemoryCost uint32 // per second
+	Logger              zerolog.Logger
+	meter               api.Meter
+	Tracer              trace.Tracer
 }
 
 func (t *Trader) newTrader() {
 	// request cluster information & this can include more information
 	// in the future
 	// key exchange ?
+	t.Logger.Info().Msg("Initializing Trader")
+	t.Logger.Info().Msgf("trader URL: %s", t.URL)
 	t.ApprovePolicy = approvePolicy{
-		MemoryThreshold:        80,
-		CoreThreshold:          80,
+		MemoryThreshold:        0.8,
+		CoreThreshold:          0.8,
 		MinimumCoreIncentive:   -1,
 		MinimumMemoryIncentive: -1,
 	}
@@ -48,13 +54,14 @@ func (t *Trader) newTrader() {
 
 	t.RequestPolicies = append(t.RequestPolicies,
 		requestPolicy_WaitTime{
-			MaximumWaittime: 10,
+			MaximumWaittime: 10000,
 		},
 		requestPolicy_Utilization{
 			MemoryMax: 0.8,
 			CoreMax:   0.8,
 		})
 	t.State.mutex = new(sync.Mutex)
+	t.TraderClients = make(map[string]pb.TraderClient)
 }
 
 func SetMeter(m api.Meter) {
@@ -123,7 +130,7 @@ func (r requestPolicy_Utilization) Broken(cs clusterState) bool {
 }
 
 type requestPolicy_WaitTime struct {
-	MaximumWaittime float64
+	MaximumWaittime float64 // in Milliseconds
 	Budget          int
 }
 
@@ -131,20 +138,31 @@ func (r requestPolicy_WaitTime) Broken(cs clusterState) bool {
 	return cs.AverageWaitTime > r.MaximumWaittime
 }
 
-func (t *Trader) ApproveTrade(contract *pb.ContractRequest) bool {
-	// check if memory
+func (t *Trader) ApproveTrade(ctx context.Context, contract *pb.ContractRequest) bool {
+	t.Logger.Info().Msg("in ApproveTrade()")
+	ctx, span := t.Tracer.Start(ctx, "ApproveTrade")
+	defer span.End()
+
 	clusterState := t.State.getState()
 	if clusterState.CoreUtilization < t.ApprovePolicy.CoreThreshold && clusterState.MemoryUtilization < t.ApprovePolicy.MemoryThreshold {
 		availableMem := float32(clusterState.TotalMemory) - (float32(clusterState.TotalMemory) * clusterState.MemoryUtilization)
 		availableCore := float32(clusterState.TotalCore) - (float32(clusterState.TotalCore) * clusterState.CoreUtilization)
+		t.Logger.Info().Msgf("available mem: %v and core: %v --> contract mem %v core %v", availableMem, availableCore, contract.Cores, contract.Memory)
 		if availableCore >= float32(contract.Cores) && availableMem >= float32(contract.Memory) {
 			// check incentive
 			// If traders are not trading with incentives, price is expected to be 0 and the minimum price would be negative
-			if int(contract.Price) >= t.ApprovePolicy.MinimumCoreIncentive*int(contract.Cores)*int(contract.Time)+t.ApprovePolicy.MinimumMemoryIncentive*int(contract.Memory)*int(contract.Time) {
+			incentive := t.ApprovePolicy.MinimumCoreIncentive*int(contract.Cores)*int(contract.Time) + t.ApprovePolicy.MinimumMemoryIncentive*int(contract.Memory)*int(contract.Time)
+			if int(contract.Price) >= incentive {
+				t.Logger.Info().Msgf("Approved trade with contract ID: %v", contract.Id)
+				span.AddEvent("Approved trade")
 				return true
 			}
+			t.Logger.Info().Msgf("Price %v is less than minimum incentive %v", contract.Price, incentive)
 		}
 	}
+
+	span.AddEvent("Trade not approved")
+	t.Logger.Info().Msgf("Couldn't approve trade with contract ID: %v", contract.Id)
 	return false
 }
 
@@ -172,10 +190,16 @@ func (h *contractResHeap) Pop() any {
 	return x
 }
 
-func (t *Trader) Trade(contract *pb.ContractRequest) error {
+func (t *Trader) Trade(ctx context.Context, contract *pb.ContractRequest) error {
+	t.Logger.Info().Msg("In Trade()")
+	ctx, span := t.Tracer.Start(ctx, "trade initiated")
+	defer span.End()
 
 	traders, err := registry.GetProviders(registry.Trader)
+	span.AddEvent("got a list of traders from registry")
+	t.Logger.Info().Msg("got a list of traders from registry")
 	if err != nil {
+		t.Logger.Error().Err(err)
 		return err
 	}
 
@@ -183,30 +207,39 @@ func (t *Trader) Trade(contract *pb.ContractRequest) error {
 	ch := make(chan *pb.ContractResponse)
 	h := &contractResHeap{}
 	heap.Init(h)
+
 	for _, trader := range traders {
+		if trader == t.URL {
+			continue
+		}
 		if _, ok := t.TraderClients[trader]; !ok {
-			conn, err := grpc.Dial(fmt.Sprintf(trader, grpc.WithTransportCredentials(insecure.NewCredentials())))
+			conn, err := grpc.NewClient(fmt.Sprint(trader), grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
 			if err != nil {
-				return err
+				t.Logger.Error().Err(err)
+				continue
 			}
 			t.TraderClients[trader] = pb.NewTraderClient(conn)
 		}
 
+		span.AddEvent("connection to trader successfully created")
+		t.Logger.Info().Msgf("connection to trader %s successfully created", trader)
 		wg.Add(1)
-		cont := pb.ContractRequest{Cores: contract.Cores, Memory: contract.Memory, Time: contract.Time, Price: contract.Price}
-		go RequestResources(t.TraderClients[trader], &cont, &wg, ch)
+		cont := pb.ContractRequest{Id: contract.Id, Cores: contract.Cores, Memory: contract.Memory, Time: contract.Time, Price: contract.Price, Trader: trader}
+		go RequestResources(ctx, t.TraderClients[trader], &cont, &wg, ch)
 	}
-
+	// go routine to close channel
 	go func() {
 		wg.Wait()
 		close(ch)
 	}()
+
 loop:
 	for {
 		select {
 		case cont, ok := <-ch:
 			if !ok {
 				// all rountines finished
+				t.Logger.Info().Msg("All traders replied")
 				break loop
 			}
 			// add to heap
@@ -216,6 +249,7 @@ loop:
 		case <-time.After(3 * time.Second):
 			// time elapsed
 			// close channel and return?
+			t.Logger.Info().Msg("time limit reached")
 			break loop
 		default:
 			time.Sleep(50 * time.Millisecond)
@@ -225,31 +259,48 @@ loop:
 
 	// contracts in heap
 
+	span.AddEvent("contracts received")
+	t.Logger.Info().Msg("contracts received")
 	// take first contract
 	for h.Len() > 0 {
 		cont := heap.Pop(h).(*pb.ContractResponse)
-		node, err := ApproveContract(trader.TraderClients[cont.Trader], cont)
+		t.Logger.Info().Msgf("winner trader url:  %s", cont.Trader)
+		node, err := ApproveContract(ctx, trader.TraderClients[cont.Trader], cont)
 		if err == nil {
-			sendVirtualNode(trader.SchedulerClient, node)
+			sendVirtualNode(ctx, trader.SchedulerClient, node)
 			return nil
+		} else {
+			t.Logger.Error().Err(err).Msg("couldn't acquire resources")
 		}
 	}
 	return errors.New("couldn't acquire resources")
 }
 
 func (t *Trader) RequestPolicyMonitor() {
+
+	t.Logger.Info().Msg("Request policy monitor Initiated")
 	for {
-		fmt.Printf("in request policy monitor\n")
 		cs := t.State.getState()
 		for _, policy := range t.RequestPolicies {
 			policyType := reflect.TypeOf(policy)
 			var contract *pb.ContractRequest
 			if policyType == reflect.TypeOf(requestPolicy_Utilization{}) && policy.Broken(cs) {
-				contract = calculateContractRequest(trader.SchedulerClient, smallNode)
-				trader.Trade(contract)
+				ctx, span := t.Tracer.Start(context.Background(), "utilization policy broken")
+				t.Logger.Info().Msg("utilization policy broken")
+				contract = calculateContractRequest(ctx, trader.SchedulerClient, smallNode)
+				t.Logger.Info().Msgf("contract created %v", contract.Id)
+				trader.Trade(ctx, contract)
+
+				span.End()
 			} else if policy.Broken(cs) {
-				contract = calculateContractRequest(trader.SchedulerClient, fastNode)
-				trader.Trade(contract)
+				ctx, span := t.Tracer.Start(context.Background(), "wait time policy broken")
+
+				t.Logger.Info().Msg("wait time policy broken")
+				contract = calculateContractRequest(ctx, trader.SchedulerClient, fastNode)
+				t.Logger.Info().Msgf("contract created %v", contract.Id)
+				trader.Trade(ctx, contract)
+
+				span.End()
 			}
 		}
 		time.Sleep(10 * time.Second)
@@ -258,17 +309,18 @@ func (t *Trader) RequestPolicyMonitor() {
 
 var trader Trader
 
-func Run(schedURL string, URL string, schedClient pb.ResourceChannelClient) {
-	fmt.Printf("in trader run!\n")
+func Run(schedURL string, URL string, schedClient pb.ResourceChannelClient, logger zerolog.Logger) {
+	trader.Logger.Info().Msg("In trader Run()")
 	trader.SchedulerURL = schedURL
 	trader.URL = URL
+	trader.Logger.Info().Msgf("trader URL: %s", trader.URL)
 	trader.SchedulerClient = schedClient
-
+	trader.Logger = logger
 	//trader.initialize_tracer()
 	trader.newTrader()
 
-	getClusterState(trader.SchedulerClient)
 	go trader.RequestPolicyMonitor()
+	getClusterState(trader.SchedulerClient)
 }
 
 func SetTracer(t trace.Tracer) {

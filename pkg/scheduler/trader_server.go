@@ -2,7 +2,6 @@ package scheduler
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	pb "github.com/hamzalsheikh/multi-cluster-simulator/pkg/trader/gen"
@@ -34,12 +33,12 @@ func (s *traderServer) Start(params *pb.StartParams, stream pb.ResourceChannel_S
 		}
 		// get resource utilization from scheduler
 		core_util, mem_util := sched.Cluster.GetResourceUtilization()
-		fmt.Printf("In scheduler util: core %v mem %v\n", core_util, mem_util)
 		currentClusterState.CoresUtilization = core_util
 		currentClusterState.MemoryUtilization = mem_util
 		currentClusterState.AverageWaitTime = sched.WaitTime.GetAverage()
+		sched.logger.Info().Msgf("In scheduler util: core %v mem %v wt %v", currentClusterState.CoresUtilization, currentClusterState.MemoryUtilization, currentClusterState.AverageWaitTime)
 		stream.Send(&currentClusterState)
-		time.Sleep(10 * time.Second)
+		time.Sleep(5 * time.Second)
 	}
 	// TODO: graceful exit
 	// closing the stream
@@ -47,26 +46,39 @@ func (s *traderServer) Start(params *pb.StartParams, stream pb.ResourceChannel_S
 }
 
 func (s *traderServer) ReceiveVirtualNode(ctx context.Context, node *pb.NodeObject) (*pb.VirtualNodeResponse, error) {
-	sched.Cluster.AddVirtualNode(node)
+	sched.logger.Info().Msg("in ReceiveVirtualNode()")
+
+	sched.logger.Info().Msgf("received node %+v", node.Cores)
+	sched.Cluster.AddVirtualNode(ctx, node)
 	return nil, nil
 }
 
 func (s *traderServer) ProvideVirtualNode(ctx context.Context, req *pb.VirtualNodeRequest) (*pb.NodeObject, error) {
-	node := sched.Cluster.AllocateVirtualNodeResources(req)
-	return node, nil
+	sched.logger.Info().Msgf("in ProvideVirtualNode() %v ", req.Id)
+	err := sched.Cluster.AllocateVirtualNodeResources(req)
+	if err != nil {
+		sched.logger.Error().Err(err).Msg("couldn't allocate resources on scheduler")
+		return nil, err
+	}
+	sched.logger.Info().Msgf("allocated resource for virtual node core %v mem %v", req.Cores, req.Memory)
+	return &pb.NodeObject{Id: req.Id, Memory: req.Memory, Cores: req.Cores, Time: uint32(req.Time)}, nil
 }
 
 func (s *traderServer) ProvideJobs(req *pb.ProvideJobsRequest, stream pb.ResourceChannel_ProvideJobsServer) error {
 	// Get level one jobs
+	sched.logger.Info().Msg("In Providejobs()")
 	l1 := sched.GetLevel1()
+
+	sched.logger.Info().Msgf("l1 len %v", len(l1))
 	BATCH := 20
 	for i := 0; i < len(l1); i += BATCH {
 
 		// parse per batch
 		batch := make([]*pb.Job, BATCH)
 
-		for j := 0; j < len(l1) || j < BATCH; j++ {
+		for j := 0; j+i < len(l1) && j < BATCH; j++ {
 			// will this create new memory allocation at each step?
+			sched.logger.Info().Msgf("Adding job %v to batch", l1[i+j].Id)
 			batch[j] = &pb.Job{
 				CoresNeeded:     uint32(l1[i+j].CoresNeeded),
 				MemoryNeeded:    uint32(l1[i+j].MemoryNeeded),
@@ -75,5 +87,6 @@ func (s *traderServer) ProvideJobs(req *pb.ProvideJobsRequest, stream pb.Resourc
 		}
 		stream.Send(&pb.ProvideJobsResponse{Jobs: batch})
 	}
+	sched.logger.Info().Msg("All jobs have been sent")
 	return nil
 }

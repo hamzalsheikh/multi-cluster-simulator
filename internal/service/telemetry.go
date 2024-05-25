@@ -2,9 +2,12 @@ package service
 
 import (
 	"context"
+	"io"
 	"log"
 	"os"
+	"time"
 
+	"github.com/rs/zerolog"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
@@ -23,6 +26,7 @@ var (
 	serviceName  = os.Getenv("SERVICE_NAME")
 	collectorURL = os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
 	insecure     = os.Getenv("INSECURE_MODE")
+	environment  = os.Getenv("GO_ENV")
 )
 
 func newResource() (*resource.Resource, error) {
@@ -111,4 +115,14 @@ func CreateMeterProvider(ctx context.Context) (*metric.MeterProvider, error) {
 		metric.WithReader(metric.NewPeriodicReader(metricExporter)),
 	)
 	return meterProvider, nil
+}
+
+func CreateLogger() zerolog.Logger {
+	var output io.Writer = zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: time.RFC3339}
+	if os.Getenv("GO_ENV") != "development" {
+		output = os.Stderr
+	}
+
+	return zerolog.New(output).With().Timestamp().Logger()
+
 }

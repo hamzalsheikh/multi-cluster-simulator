@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"net"
 	"os"
 
 	"github.com/hamzalsheikh/multi-cluster-simulator/internal/service"
@@ -43,8 +44,9 @@ func main() {
 	}()
 	trader.SetMeter(meterProvider.Meter("Trader"))
 	// choose a port randomly between 1024 to 49151
-	host, port := "localhost", fmt.Sprint(rand.Intn(49151-1024)+1024)
-	serviceAddr := fmt.Sprintf("http://%v:%v", host, port)
+	portnb := rand.Intn(49151-1025) + 1025
+	host, port := "localhost", fmt.Sprint(portnb)
+	serviceAddr := fmt.Sprintf("http://%v:%v", host, portnb)
 	fmt.Printf("Trader port is %v\n", port)
 
 	schedPort := os.Args[1]
@@ -54,13 +56,24 @@ func main() {
 		return
 	}
 
+	// set rpc server
+	grpcURL := fmt.Sprintf("%v:%v", host, portnb-1)
+	lis, err := net.Listen("tcp", grpcURL)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	grpcServer := grpc.NewServer(grpc.StatsHandler(otelgrpc.NewServerHandler()))
+
+	pb.RegisterTraderServer(grpcServer, trader.NewTraderServer())
+	go grpcServer.Serve(lis)
 	var reg registry.Registration
 
 	reg.ServiceName = registry.Trader
-	reg.ServiceURL = serviceAddr
+	reg.ServiceURL = grpcURL
 	reg.RequiredServices = []registry.ServiceName{registry.Trader}
-	reg.ServiceUpdateURL = reg.ServiceURL + "/services"
-	reg.HeartbeatURL = reg.ServiceURL + "/heartbeat"
+	reg.ServiceUpdateURL = serviceAddr + "/services"
+	reg.HeartbeatURL = serviceAddr + "/heartbeat"
 
 	ctx, err = service.StartWithRPC(context.Background(),
 		host,
@@ -71,6 +84,6 @@ func main() {
 	}
 	//defer conn.Close()
 	client := pb.NewResourceChannelClient(conn)
-	trader.Run(fmt.Sprintf("http://%v:%v", "localhost", schedPort), fmt.Sprintf("http://%v:%v", "localhost", port), client)
+	trader.Run(fmt.Sprintf("http://%v:%v", "localhost", schedPort), grpcURL, client, service.CreateLogger())
 
 }
