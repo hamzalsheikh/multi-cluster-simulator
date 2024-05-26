@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"context"
+	"os"
 	"time"
 
 	api "go.opentelemetry.io/otel/metric"
@@ -16,7 +17,7 @@ func RunMetrics() {
 	)
 
 	waitHistogram, _ := sched.meter.Float64Histogram(
-		"waitTime",
+		os.Getenv("SERVICE_NAME")+"waitTime",
 		api.WithUnit("ms"),
 		api.WithDescription("Average Job Wait Time"),
 	)
