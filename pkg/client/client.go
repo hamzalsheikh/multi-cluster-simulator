@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math/rand"
 	"net/http"
 	"time"
 
@@ -92,10 +93,9 @@ func (c *Client) sendJobs() {
 		var j scheduler.Job
 		j.Id = id
 		// fmt.Print(c.maxJobCore)
-		j.CoresNeeded = uint(job_dist.Rand()) * c.maxJobCore // uint(rand.Intn(int(c.maxJobCore))) //uint( dist.Rand() * float64(c.maxJobCore))
-		j.Duration = 10 * time.Second
-		j.MemoryNeeded = uint(job_dist.Rand()) * c.maxJobMem // uint(rand.Intn(int(c.maxJobMem)))
-
+		j.CoresNeeded = uint(job_dist.Rand() * float64(c.maxJobCore)) // uint(rand.Intn(int(c.maxJobCore))) //uint( dist.Rand() * float64(c.maxJobCore))
+		j.Duration = time.Duration(rand.Intn(600)) * time.Second
+		j.MemoryNeeded = uint(job_dist.Rand() * float64(c.maxJobMem)) // uint(rand.Intn(int(c.maxJobMem)))
 		id++
 		return j
 	}
@@ -119,7 +119,7 @@ func (c *Client) sendJobs() {
 				//fmt.Printf("cores: %v memory %v\n", dist.Rand(), dist.Rand())
 				j := getJob()
 				SendJob(j)
-				fmt.Printf("Job %v sent\n", j.Id)
+				fmt.Printf("Job %+v sent\n", j)
 				time.Sleep(time.Duration(time_between_jobs) * time.Second)
 
 			}
