@@ -3,9 +3,46 @@
     "Nodes": [
         {
             "Id": 1,
-            "Memory": 10,
-            "Cores": 10,
-            "MemoryAvailable": 10,
-            "CoresAvailable": 10
-        }]
+            "Type": "physical",
+            "Memory": 24000,
+            "Cores": 32,
+            "MemoryAvailable": 24000,
+            "CoresAvailable": 32
+        },
+
+        {
+            "Id": 2,
+            "Type": "physical",
+            "Memory": 24000,
+            "Cores": 32,
+            "MemoryAvailable": 24000,
+            "CoresAvailable": 32
+        },
+
+        {
+            "Id": 3,
+            "Type": "physical",
+            "Memory": 24000,
+            "Cores": 32,
+            "MemoryAvailable": 24000,
+            "CoresAvailable": 32
+        },
+        {
+            "Id": 4,
+            "Type": "physical",
+            "Memory": 24000,
+            "Cores": 32,
+            "MemoryAvailable": 24000,
+            "CoresAvailable": 32
+        },
+        {
+            "Id": 5,
+            "Type": "physical",
+            "Memory": 24000,
+            "Cores": 32,
+            "MemoryAvailable": 24000,
+            "CoresAvailable": 32
+        }
+    ]
+
 }
