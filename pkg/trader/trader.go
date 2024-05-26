@@ -54,7 +54,7 @@ func (t *Trader) newTrader() {
 
 	t.RequestPolicies = append(t.RequestPolicies,
 		requestPolicy_WaitTime{
-			MaximumWaittime: 10000,
+			MaximumWaittime: 600000,
 		},
 		requestPolicy_Utilization{
 			MemoryMax: 0.8,
