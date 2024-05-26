@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math"
 	"time"
 
 	pb "github.com/hamzalsheikh/multi-cluster-simulator/pkg/trader/gen"
+	"google.golang.org/protobuf/types/known/durationpb"
 )
 
 func getClusterState(client pb.ResourceChannelClient) {
@@ -44,32 +46,23 @@ func getClusterState(client pb.ResourceChannelClient) {
 
 }
 
-type nodeState struct {
-	atTime int64
-	cores  uint32
-	memory uint32
-}
+func getVirtualNode(ctx context.Context, client pb.ResourceChannelClient, request *pb.VirtualNodeRequest) (*pb.NodeObject, error) {
 
-type jobState struct {
-	startTime int64
-	endTime   int64
-	// total node size
-	cores  uint32
-	memory uint32
-	time   int64
-}
-
-func GetMin(arr []jobState) jobState {
-	var min jobState
-	var cost = ^uint32(0)
-	for _, j := range arr {
-		j_cost := j.cores*trader.MaximimumCoreCost*uint32(j.time) + j.memory*trader.MaximimumMemoryCost*uint32(j.time)
-		if j_cost < cost {
-			cost = j_cost
-			min = j
-		}
+	trader.Logger.Info().Msg("in getVirtualNode()")
+	trader.Logger.Info().Msgf("request memory %v", request.Memory)
+	virtualNode, err := client.ProvideVirtualNode(ctx, request)
+	if err != nil {
+		trader.Logger.Error().Err(err).Msg("couldn't get get virtual node")
 	}
-	return min
+	trader.Logger.Info().Msgf("got node from scheduler with memory %v", virtualNode.Memory)
+	return virtualNode, err
+
+}
+
+func sendVirtualNode(ctx context.Context, client pb.ResourceChannelClient, node *pb.NodeObject) {
+
+	trader.Logger.Info().Msg("in sendVirtualNode() to scheduler")
+	client.ReceiveVirtualNode(ctx, node)
 }
 
 type NodeType string
@@ -145,21 +138,21 @@ func calculateFastNodeSize(nodeChan chan *pb.ContractRequest, jobChan chan *pb.P
 			for _, j := range jobs.Jobs {
 
 				trader.Logger.Info().Msgf("job  core %v, memory %v time %v", j.CoresNeeded, j.MemoryNeeded, j.UnixTimeSeconds)
-				var newTime int64
-				if j.UnixTimeSeconds > contract.Time {
-					newTime = j.UnixTimeSeconds
+				var newTime time.Duration
+				if j.UnixTimeSeconds.AsDuration() > contract.Time.AsDuration() {
+					newTime = j.UnixTimeSeconds.AsDuration()
 				} else {
-					newTime = contract.Time
+					newTime = contract.Time.AsDuration()
 				}
 
 				newCores := contract.Cores + j.CoresNeeded
 				newMem := contract.Memory + j.MemoryNeeded
-				newPrice := newTime*int64(newCores)*int64(trader.MaximimumCoreCost) + int64(trader.MaximimumMemoryCost)*newTime*int64(newMem)
-				if newPrice < int64(trader.Budget) || trader.Budget < 0 {
+				newPrice := newTime.Seconds()*float64(newCores)*float64(trader.MaximimumCoreCost) + float64(trader.MaximimumMemoryCost)*newTime.Seconds()*float64(newMem)
+				if newPrice < float64(trader.Budget) || trader.Budget < 0 {
 					contract.Cores = newCores
 					contract.Memory = newMem
-					contract.Time = newTime
-					contract.Price = uint32(newPrice)
+					contract.Time = durationpb.New(newTime)
+					contract.Price = float32(newPrice)
 				} else {
 					trader.Logger.Info().Msg("fast node reached budget")
 					nodeChan <- &contract
@@ -174,6 +167,34 @@ func calculateFastNodeSize(nodeChan chan *pb.ContractRequest, jobChan chan *pb.P
 
 		}
 	}
+}
+
+type nodeState struct {
+	atTime float64
+	cores  int32
+	memory int32
+}
+
+type jobState struct {
+	startTime float64
+	endTime   float64
+	// total node size
+	cores  int32
+	memory int32
+	time   float64
+}
+
+func GetMin(arr []jobState) jobState {
+	var min jobState
+	var cost float32 = math.MaxFloat32
+	for _, j := range arr {
+		j_cost := float32(j.cores)*trader.MaximimumCoreCost*float32(j.time) + float32(j.memory)*trader.MaximimumMemoryCost*float32(j.time)
+		if j_cost < cost {
+			cost = j_cost
+			min = j
+		}
+	}
+	return min
 }
 
 // this implementation efficiently reduces the size of resources requested given a budget constraint
@@ -192,7 +213,6 @@ func calculateSmallNodeSize(nodeChan chan *pb.ContractRequest, jobChan chan *pb.
 				return
 			}
 			for _, j := range jobs.Jobs {
-
 				// the costArray measure the cost of starting the job at each time and pops to a minheap when the job is fully scheduled
 				// minheap is sorted by cost.
 				var costArr []jobState // can be ordered map
@@ -209,13 +229,13 @@ func calculateSmallNodeSize(nodeChan chan *pb.ContractRequest, jobChan chan *pb.
 						// job cost established
 						if c.endTime > t.atTime {
 							// max total core should be reported for cost evaluation
-							cores := currState.cores - j.CoresNeeded
-							mem := currState.memory - j.MemoryNeeded
-							if cores < 0 && c.cores < contract.Cores-cores {
-								c.cores = contract.Cores - cores
+							cores := currState.cores - int32(j.CoresNeeded)
+							mem := currState.memory - int32(j.MemoryNeeded)
+							if cores < 0 && int32(c.cores) < int32(contract.Cores)-cores {
+								c.cores = int32(contract.Cores) - cores
 							}
-							if mem < 0 && c.memory < contract.Memory-mem {
-								c.memory = contract.Memory - mem
+							if mem < 0 && c.memory < int32(contract.Memory)-mem {
+								c.memory = int32(contract.Memory) - mem
 
 							}
 						}
@@ -224,23 +244,23 @@ func calculateSmallNodeSize(nodeChan chan *pb.ContractRequest, jobChan chan *pb.
 					// start job atTime
 					var startingJob jobState
 
-					cores := currState.cores - j.CoresNeeded
-					mem := currState.memory - j.MemoryNeeded
+					cores := currState.cores - int32(j.CoresNeeded)
+					mem := currState.memory - int32(j.MemoryNeeded)
 
 					if cores < 0 {
-						startingJob.cores = contract.Cores - cores
+						startingJob.cores = int32(contract.Cores) - cores
 					} else {
-						startingJob.cores = contract.Cores
+						startingJob.cores = int32(contract.Cores)
 					}
 					if mem < 0 {
-						startingJob.memory = contract.Memory - mem
+						startingJob.memory = int32(contract.Memory) - mem
 					} else {
-						startingJob.memory = contract.Memory
+						startingJob.memory = int32(contract.Memory)
 					}
 
 					startingJob.startTime = t.atTime
-					startingJob.endTime = t.atTime + j.UnixTimeSeconds
-					if contract.Time < startingJob.endTime {
+					startingJob.endTime = t.atTime + j.UnixTimeSeconds.AsDuration().Seconds()
+					if contract.Time.AsDuration().Seconds() < startingJob.endTime {
 						startingJob.time = startingJob.endTime
 					}
 					costArr = append(costArr, startingJob)
@@ -248,11 +268,11 @@ func calculateSmallNodeSize(nodeChan chan *pb.ContractRequest, jobChan chan *pb.
 					// if the job doesn't fit and we still have a budget, skip job
 				}
 				min := GetMin(costArr)
-				price := min.cores*trader.MaximimumCoreCost*uint32(min.time) + min.memory*trader.MaximimumMemoryCost*uint32(min.time)
-				if int(price) < trader.Budget || trader.Budget < 0 {
-					contract.Cores = min.cores
-					contract.Memory = min.memory
-					contract.Time = min.time
+				price := float32(min.cores)*trader.MaximimumCoreCost*float32(min.time) + float32(min.memory)*trader.MaximimumMemoryCost*float32(min.time)
+				if price < trader.Budget || trader.Budget < 0 {
+					contract.Cores = uint32(min.cores)
+					contract.Memory = uint32(min.memory)
+					contract.Time = durationpb.New(time.Duration(min.time * float64(time.Second)))
 					contract.Price = price
 				} else {
 					trader.Logger.Info().Msg("small node reached budget")
@@ -266,22 +286,4 @@ func calculateSmallNodeSize(nodeChan chan *pb.ContractRequest, jobChan chan *pb.
 			return
 		}
 	}
-}
-
-func getVirtualNode(ctx context.Context, client pb.ResourceChannelClient, request *pb.VirtualNodeRequest) (*pb.NodeObject, error) {
-
-	trader.Logger.Info().Msg("in getVirtualNode()")
-	virtualNode, err := client.ProvideVirtualNode(ctx, request)
-	if err != nil {
-		trader.Logger.Error().Err(err).Msg("couldn't get get virtual node")
-	}
-	trader.Logger.Info().Msgf("got node from scheduler with memory %v", virtualNode.Memory)
-	return virtualNode, err
-
-}
-
-func sendVirtualNode(ctx context.Context, client pb.ResourceChannelClient, node *pb.NodeObject) {
-
-	trader.Logger.Info().Msg("in sendVirtualNode() to scheduler")
-	client.ReceiveVirtualNode(ctx, node)
 }

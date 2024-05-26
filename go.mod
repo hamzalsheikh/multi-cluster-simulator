@@ -16,7 +16,7 @@ require (
 	go.opentelemetry.io/otel/trace v1.26.0
 	gonum.org/v1/gonum v0.14.0
 	google.golang.org/grpc v1.63.2
-	google.golang.org/protobuf v1.33.0
+	google.golang.org/protobuf v1.34.1
 )
 
 require (

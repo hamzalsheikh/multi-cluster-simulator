@@ -5,6 +5,7 @@ import (
 	"time"
 
 	pb "github.com/hamzalsheikh/multi-cluster-simulator/pkg/trader/gen"
+	"google.golang.org/protobuf/types/known/durationpb"
 )
 
 type traderServer struct {
@@ -54,14 +55,15 @@ func (s *traderServer) ReceiveVirtualNode(ctx context.Context, node *pb.NodeObje
 }
 
 func (s *traderServer) ProvideVirtualNode(ctx context.Context, req *pb.VirtualNodeRequest) (*pb.NodeObject, error) {
-	sched.logger.Info().Msgf("in ProvideVirtualNode() %v ", req.Id)
+	node := pb.NodeObject{Id: req.Id, Memory: req.Memory, Cores: req.Cores, Time: req.Time}
+	sched.logger.Info().Msgf("in ProvideVirtualNode() %v ", req.Memory)
 	err := sched.Cluster.AllocateVirtualNodeResources(req)
 	if err != nil {
 		sched.logger.Error().Err(err).Msg("couldn't allocate resources on scheduler")
 		return nil, err
 	}
-	sched.logger.Info().Msgf("allocated resource for virtual node core %v mem %v", req.Cores, req.Memory)
-	return &pb.NodeObject{Id: req.Id, Memory: req.Memory, Cores: req.Cores, Time: uint32(req.Time)}, nil
+	sched.logger.Info().Msgf("allocated resource for virtual node core %v mem %v time %v", node.Cores, node.Memory, node.Time)
+	return &node, nil
 }
 
 func (s *traderServer) ProvideJobs(req *pb.ProvideJobsRequest, stream pb.ResourceChannel_ProvideJobsServer) error {
@@ -82,7 +84,7 @@ func (s *traderServer) ProvideJobs(req *pb.ProvideJobsRequest, stream pb.Resourc
 			batch[j] = &pb.Job{
 				CoresNeeded:     uint32(l1[i+j].CoresNeeded),
 				MemoryNeeded:    uint32(l1[i+j].MemoryNeeded),
-				UnixTimeSeconds: int64(l1[i+j].Duration),
+				UnixTimeSeconds: durationpb.New(l1[i+j].Duration),
 			}
 		}
 		stream.Send(&pb.ProvideJobsResponse{Jobs: batch})

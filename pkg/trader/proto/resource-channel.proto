@@ -9,7 +9,7 @@ option go_package = "github.com/hamzalsheikh/multi-cluster-simulator/pkg/trader"
 package trader;
 
 import "trader.proto";
-
+import "google/protobuf/duration.proto";
 service ResourceChannel {
 
   rpc Start (StartParams) returns (stream ClusterState) {}
@@ -37,7 +37,7 @@ message VirtualNodeRequest {
   uint32 id = 1;
   uint32 cores = 2;
   uint32 memory = 3;
-  int64  time = 4;
+  google.protobuf.Duration time = 4;
 }
 message VirtualNodeResponse {}
 
@@ -48,5 +48,5 @@ message ProvideJobsResponse {
 message Job {
   uint32 cores_needed = 1;
   uint32 memory_needed = 2;
-  int64 unix_time_seconds = 3;
+  google.protobuf.Duration unix_time_seconds = 3;
 }

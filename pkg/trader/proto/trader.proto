@@ -1,15 +1,13 @@
 /* 
 This file contains communication between traders (clusters)
 */
-
-
-
 syntax = "proto3";
 
 option go_package = "github.com/hamzalsheikh/multi-cluster-simulator/pkg/trader";
 
 package trader;
 
+import "google/protobuf/duration.proto";
 //  service
 
 service Trader {
@@ -23,8 +21,8 @@ message ContractRequest {
   uint32 id = 1;
   uint32 cores = 2;
   uint32 memory = 3;
-  int64  time = 4;
-  uint32 price = 5;
+  google.protobuf.Duration time = 4;
+  float price = 5;
   string trader = 6; // url from registry
 }
 
@@ -34,8 +32,8 @@ message ContractResponse {
   bool   approve = 2;
   uint32 cores = 3;
   uint32 memory = 4;
-  int64 time = 5;
-  uint32 price = 6;
+  google.protobuf.Duration time = 5;
+  float price = 6;
   string trader = 7; // url from registry
   // string node_url;
   // struct node_struct; 
@@ -47,5 +45,5 @@ message NodeObject {
   string  url = 2;
   uint32  cores = 3;
   uint32  memory = 4;
-  uint32  time = 5;
+  google.protobuf.Duration time = 5;
 }

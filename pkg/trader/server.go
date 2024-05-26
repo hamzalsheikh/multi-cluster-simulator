@@ -41,7 +41,7 @@ func (s *traderServer) RequestResource(ctx context.Context, contract *pb.Contrac
 	// consult policy
 	approve := trader.ApproveTrade(ctx, contract)
 
-	contractResponse := pb.ContractResponse{Id: s.id, Approve: approve, Trader: trader.URL}
+	contractResponse := pb.ContractResponse{Id: s.id, Approve: approve, Trader: trader.URL, Cores: contract.Cores, Memory: contract.Memory, Time: contract.Time, Price: contract.Price}
 	s.currentContract = &contractResponse
 	s.id++
 
@@ -62,6 +62,7 @@ func (s *traderServer) RequestResource(ctx context.Context, contract *pb.Contrac
 
 func (s *traderServer) ApproveContract(ctx context.Context, contract *pb.ContractResponse) (*pb.NodeObject, error) {
 	trader.Logger.Info().Msgf("In ApproveContract() id %v", contract.Id)
+	trader.Logger.Info().Msgf("contract id %v mem %v ", contract.Id, contract.Memory)
 	s.currLock.Lock()
 	defer s.currLock.Unlock()
 
@@ -70,8 +71,10 @@ func (s *traderServer) ApproveContract(ctx context.Context, contract *pb.Contrac
 	}
 
 	// contract valid, request resources from scheduler
-	trader.Logger.Info().Msg("getting node from scheduler")
-	virtualNode, err := getVirtualNode(ctx, trader.SchedulerClient, &pb.VirtualNodeRequest{Cores: contract.Cores, Memory: contract.Memory, Time: contract.Time})
+	virtualNodeReq := &pb.VirtualNodeRequest{Cores: contract.Cores, Memory: contract.Memory, Time: contract.Time}
+
+	trader.Logger.Info().Msgf("getting node from scheduler of request memory: %v", virtualNodeReq.Memory)
+	virtualNode, err := getVirtualNode(ctx, trader.SchedulerClient, virtualNodeReq)
 
 	if err != nil {
 		trader.Logger.Error().Err(err).Msg("couldn't get virtual node from scheduler")

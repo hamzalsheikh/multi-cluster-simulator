@@ -128,7 +128,7 @@ func (sched *Scheduler) ScheduleJob(j Job) error {
 	// check for node that satisfies job requirements
 	for _, node := range sched.Cluster.Nodes {
 		node.mutex.Lock()
-		if node.CoresAvailable > j.CoresNeeded && node.MemoryAvailable > j.MemoryNeeded {
+		if node.CoresAvailable >= j.CoresNeeded && node.MemoryAvailable >= j.MemoryNeeded {
 			node.mutex.Unlock()
 			go node.RunJob(j)
 			return nil
@@ -145,6 +145,7 @@ func (sched *Scheduler) ScheduleJobsOnVirtual(ctx context.Context, node *Node) {
 	for _, j := range sched.Level1 {
 		node.mutex.Lock()
 		if node.CoresAvailable > j.CoresNeeded && node.MemoryAvailable > j.MemoryNeeded {
+			sched.logger.Info().Msgf("scheduled job %v on virtual", j.Id)
 			go node.RunJob(j)
 		}
 		node.mutex.Unlock()
@@ -315,7 +316,6 @@ func (sched *Scheduler) Delay() {
 					waitTimeMeter.Record(context.Background(), sched.Level1[i].WaitTime.UnixMilli())
 					// Update cluster wait time and delete job from map
 					delete(sched.WaitTime.JobsMap, sched.Level1[i].Id)
-					sched.WaitTime.Lock.Unlock()
 					fmt.Printf("scheduled job %v from level 1\n", sched.Level1[i].Id)
 					// remove job from level1 queue
 					sched.Level1 = append(sched.Level1[:i], sched.Level1[i+1:]...)

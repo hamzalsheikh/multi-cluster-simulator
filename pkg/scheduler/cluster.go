@@ -14,6 +14,7 @@ import (
 type Cluster struct {
 	Id                uint
 	Nodes             []*Node
+	nodesMutex        *sync.Mutex
 	URL               string
 	TotalMemory       uint32
 	TotalCore         uint32
@@ -65,14 +66,22 @@ func (c *Cluster) AddVirtualNode(ctx context.Context, node *pb.NodeObject) {
 	sched.logger.Info().Msg("in AddVirtualNode()")
 	var n Node
 	n.Type = "Virtual"
+	n.Id = uint(node.Id)
+	n.Cores = uint(node.Cores)
+	n.Memory = uint(node.Memory)
 	n.CoresAvailable = uint(node.Cores)
 	n.MemoryAvailable = uint(node.Memory)
-	n.Time = uint(node.Time)
+	n.Time = node.Time.AsDuration()
 	n.URL = node.Url
 	n.mutex = new(sync.Mutex)
+	n.RunningJobs = make(map[uint]Job)
 	sched.logger.Info().Msgf("created node %+v", n)
-	//c.Nodes = append(c.Nodes, n)
-	sched.ScheduleJobsOnVirtual(ctx, &n)
+	c.Nodes = append(c.Nodes, &n)
+	//sched.ScheduleJobsOnVirtual(ctx, &n)
+	//	time.Sleep(time.Duration(n.Time) * time.Millisecond)
+
+	//idx := slices.Index(c.Nodes, &n)
+
 }
 
 func (c *Cluster) AllocateVirtualNodeResources(req *pb.VirtualNodeRequest) error {
@@ -104,7 +113,7 @@ func (c *Cluster) AllocateVirtualNodeResources(req *pb.VirtualNodeRequest) error
 			req.Cores -= uint32(core_diff)
 		}
 
-		node.RunJob(Job{Id: uint(req.Id), CoresNeeded: uint(core_diff), MemoryNeeded: uint(mem_diff), Duration: time.Second * time.Duration(req.Time), Ownership: "Foreign"})
+		go node.RunJob(Job{Id: uint(req.Id), CoresNeeded: uint(core_diff), MemoryNeeded: uint(mem_diff), Duration: req.Time.AsDuration(), Ownership: "Foreign"})
 		node.mutex.Unlock()
 	}
 	if req.Cores > 0 || req.Memory > 0 {
@@ -124,7 +133,7 @@ type Node struct {
 	MemoryAvailable uint
 	CoresAvailable  uint
 	RunningJobs     map[uint]Job
-	Time            uint
+	Time            time.Duration
 	mutex           *sync.Mutex
 }
 

@@ -30,9 +30,9 @@ type Trader struct {
 	SchedulerURL        string
 	SchedulerClient     pb.ResourceChannelClient   // gRPC client
 	TraderClients       map[string]pb.TraderClient // gRPC client
-	Budget              int
-	MaximimumCoreCost   uint32 // per second
-	MaximimumMemoryCost uint32 // per second
+	Budget              float32
+	MaximimumCoreCost   float32 // per second
+	MaximimumMemoryCost float32 // per second
 	Logger              zerolog.Logger
 	meter               api.Meter
 	Tracer              trace.Tracer
@@ -110,8 +110,8 @@ func (c *clusterState) getState() clusterState {
 type approvePolicy struct {
 	MemoryThreshold        float32
 	CoreThreshold          float32
-	MinimumCoreIncentive   int // per second
-	MinimumMemoryIncentive int // per second
+	MinimumCoreIncentive   float64 // per second
+	MinimumMemoryIncentive float64 // per second
 }
 
 type requestPolicy interface {
@@ -140,7 +140,7 @@ func (r requestPolicy_WaitTime) Broken(cs clusterState) bool {
 
 func (t *Trader) ApproveTrade(ctx context.Context, contract *pb.ContractRequest) bool {
 	t.Logger.Info().Msg("in ApproveTrade()")
-	ctx, span := t.Tracer.Start(ctx, "ApproveTrade")
+	_, span := t.Tracer.Start(ctx, "ApproveTrade")
 	defer span.End()
 
 	clusterState := t.State.getState()
@@ -151,8 +151,8 @@ func (t *Trader) ApproveTrade(ctx context.Context, contract *pb.ContractRequest)
 		if availableCore >= float32(contract.Cores) && availableMem >= float32(contract.Memory) {
 			// check incentive
 			// If traders are not trading with incentives, price is expected to be 0 and the minimum price would be negative
-			incentive := t.ApprovePolicy.MinimumCoreIncentive*int(contract.Cores)*int(contract.Time) + t.ApprovePolicy.MinimumMemoryIncentive*int(contract.Memory)*int(contract.Time)
-			if int(contract.Price) >= incentive {
+			incentive := t.ApprovePolicy.MinimumCoreIncentive*float64(contract.Cores)*contract.Time.AsDuration().Seconds() + t.ApprovePolicy.MinimumMemoryIncentive*float64(contract.Memory)*contract.Time.AsDuration().Seconds()
+			if float64(contract.Price) >= incentive {
 				t.Logger.Info().Msgf("Approved trade with contract ID: %v", contract.Id)
 				span.AddEvent("Approved trade")
 				return true
@@ -227,7 +227,7 @@ func (t *Trader) Trade(ctx context.Context, contract *pb.ContractRequest) error 
 		cont := pb.ContractRequest{Id: contract.Id, Cores: contract.Cores, Memory: contract.Memory, Time: contract.Time, Price: contract.Price, Trader: trader}
 		go RequestResources(ctx, t.TraderClients[trader], &cont, &wg, ch)
 	}
-	// go routine to close channel
+	// non-blocking go routine to close channel for
 	go func() {
 		wg.Wait()
 		close(ch)
@@ -267,6 +267,7 @@ loop:
 		t.Logger.Info().Msgf("winner trader url:  %s", cont.Trader)
 		node, err := ApproveContract(ctx, trader.TraderClients[cont.Trader], cont)
 		if err == nil {
+			t.Logger.Info().Msgf("received virtual node from trader memory %v", node.Memory)
 			sendVirtualNode(ctx, trader.SchedulerClient, node)
 			return nil
 		} else {
