@@ -1,6 +1,9 @@
 package scheduler
 
 import (
+	"context"
+	"time"
+
 	api "go.opentelemetry.io/otel/metric"
 )
 
@@ -12,9 +15,16 @@ func RunMetrics() {
 		api.WithDescription("The number of jobs not scheduled"),
 	)
 
-	sched.meter.Int64Histogram(
+	waitHistogram, _ := sched.meter.Float64Histogram(
 		"waitTime",
 		api.WithUnit("ms"),
-		api.WithDescription("Job wait time"),
+		api.WithDescription("Average Job Wait Time"),
 	)
+
+	go func() {
+		for {
+			waitHistogram.Record(context.TODO(), sched.WaitTime.GetAverage())
+			time.Sleep(5 * time.Second)
+		}
+	}()
 }

@@ -298,7 +298,6 @@ func (sched *Scheduler) Fifo() {
 func (sched *Scheduler) Delay() {
 
 	counter, _ := sched.meter.Int64UpDownCounter("jobs_in_queue")
-	waitTimeMeter, _ := sched.meter.Int64Histogram("waitTime")
 	for {
 		sched.L1Lock.Lock()
 		if len(sched.Level1) > 0 {
@@ -313,7 +312,6 @@ func (sched *Scheduler) Delay() {
 				sched.WaitTime.TotalTime += sched.WaitTime.JobsMap[sched.Level1[i].Id]
 				if err == nil {
 					// Send telemetry
-					waitTimeMeter.Record(context.Background(), sched.Level1[i].WaitTime.UnixMilli())
 					// Update cluster wait time and delete job from map
 					delete(sched.WaitTime.JobsMap, sched.Level1[i].Id)
 					fmt.Printf("scheduled job %v from level 1\n", sched.Level1[i].Id)
