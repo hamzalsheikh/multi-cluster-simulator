@@ -84,6 +84,6 @@ func main() {
 	}
 	//defer conn.Close()
 	client := pb.NewResourceChannelClient(conn)
-	trader.Run(fmt.Sprintf("http://%v:%v", "localhost", schedPort), grpcURL, client, service.CreateLogger())
+	trader.Run(fmt.Sprintf("http://%v:%v", "localhost", schedPort), fmt.Sprintf("http://%v:%v", "localhost", port), client, service.CreateLogger())
 
 }

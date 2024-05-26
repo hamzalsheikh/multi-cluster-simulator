@@ -147,7 +147,7 @@ func (t *Trader) ApproveTrade(ctx context.Context, contract *pb.ContractRequest)
 	if clusterState.CoreUtilization < t.ApprovePolicy.CoreThreshold && clusterState.MemoryUtilization < t.ApprovePolicy.MemoryThreshold {
 		availableMem := float32(clusterState.TotalMemory) - (float32(clusterState.TotalMemory) * clusterState.MemoryUtilization)
 		availableCore := float32(clusterState.TotalCore) - (float32(clusterState.TotalCore) * clusterState.CoreUtilization)
-		t.Logger.Info().Msgf("available mem: %v and core: %v --> contract mem %v core %v", availableMem, availableCore, contract.Cores, contract.Memory)
+		t.Logger.Info().Msgf("available mem: %v and core: %v --> contract mem %v core %v", availableMem, availableCore, contract.Memory, contract.Cores)
 		if availableCore >= float32(contract.Cores) && availableMem >= float32(contract.Memory) {
 			// check incentive
 			// If traders are not trading with incentives, price is expected to be 0 and the minimum price would be negative
@@ -290,18 +290,34 @@ func (t *Trader) RequestPolicyMonitor() {
 				t.Logger.Info().Msg("utilization policy broken")
 				contract = calculateContractRequest(ctx, trader.SchedulerClient, smallNode)
 				t.Logger.Info().Msgf("contract created %v", contract.Id)
-				trader.Trade(ctx, contract)
-
+				err := trader.Trade(ctx, contract)
 				span.End()
+				// wait after trade, arbitrary numbers used here,
+				if err == nil {
+					t.Logger.Info().Msg("Trade was successful")
+					time.Sleep(4 * time.Minute)
+				} else {
+					t.Logger.Info().Msg("Trade was not successul, waiting before initiating a new trade")
+					time.Sleep(2 * time.Minute)
+				}
+
 			} else if policy.Broken(cs) {
 				ctx, span := t.Tracer.Start(context.Background(), "wait time policy broken")
 
 				t.Logger.Info().Msg("wait time policy broken")
 				contract = calculateContractRequest(ctx, trader.SchedulerClient, fastNode)
 				t.Logger.Info().Msgf("contract created %v", contract.Id)
-				trader.Trade(ctx, contract)
+				err := trader.Trade(ctx, contract)
 
 				span.End()
+				// wait after trade, arbitrary numbers used here,
+				if err == nil {
+					t.Logger.Info().Msg("Trade was successful")
+					time.Sleep(4 * time.Minute)
+				} else {
+					t.Logger.Info().Msg("Trade was not successul, waiting before initiating a new trade")
+					time.Sleep(2 * time.Minute)
+				}
 			}
 		}
 		time.Sleep(10 * time.Second)

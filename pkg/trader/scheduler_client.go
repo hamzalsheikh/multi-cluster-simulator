@@ -54,7 +54,7 @@ func getVirtualNode(ctx context.Context, client pb.ResourceChannelClient, reques
 	if err != nil {
 		trader.Logger.Error().Err(err).Msg("couldn't get get virtual node")
 	}
-	trader.Logger.Info().Msgf("got node from scheduler with memory %v", virtualNode.Memory)
+	trader.Logger.Info().Msgf("got virtual node from scheduler %+v", virtualNode)
 	return virtualNode, err
 
 }
