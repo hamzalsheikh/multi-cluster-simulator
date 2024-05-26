@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"time"
 
+	exprand "golang.org/x/exp/rand"
+
 	"github.com/hamzalsheikh/multi-cluster-simulator/pkg/scheduler"
 
 	"go.opentelemetry.io/otel/trace"
@@ -56,7 +58,6 @@ func (c *Client) newClient() {
 		return
 	}
 	c.Cluster = cluster
-	fmt.Printf("cluster %+v \n", cluster)
 	// TODO: change this to user input
 	c.time_dist = "poisson"
 
@@ -105,6 +106,7 @@ func (c *Client) sendJobs() {
 	case "poisson":
 		time_dist := distuv.Poisson{
 			Lambda: 10,
+			Src:    exprand.NewSource(9),
 		}
 
 		for {
