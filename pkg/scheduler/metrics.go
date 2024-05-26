@@ -11,13 +11,13 @@ import (
 func RunMetrics() {
 
 	sched.meter.Int64UpDownCounter(
-		"jobs_in_queue",
+		os.Getenv("SERVICE_NAME")+"_jobs_in_queue",
 		api.WithUnit("1"),
 		api.WithDescription("The number of jobs not scheduled"),
 	)
 
 	waitHistogram, _ := sched.meter.Float64Histogram(
-		os.Getenv("SERVICE_NAME")+"waitTime",
+		os.Getenv("SERVICE_NAME")+"_waitTime",
 		api.WithUnit("ms"),
 		api.WithDescription("Average Job Wait Time"),
 	)

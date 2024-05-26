@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
@@ -297,7 +298,7 @@ func (sched *Scheduler) Fifo() {
 
 func (sched *Scheduler) Delay() {
 
-	counter, _ := sched.meter.Int64UpDownCounter("jobs_in_queue")
+	counter, _ := sched.meter.Int64UpDownCounter(os.Getenv("SERVICE_NAME") + "_jobs_in_queue")
 	for {
 		sched.L1Lock.Lock()
 		if len(sched.Level1) > 0 {
