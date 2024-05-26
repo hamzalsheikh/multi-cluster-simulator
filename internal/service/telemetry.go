@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -119,8 +120,22 @@ func CreateMeterProvider(ctx context.Context) (*metric.MeterProvider, error) {
 
 func CreateLogger() zerolog.Logger {
 	var output io.Writer = zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: time.RFC3339}
-	if os.Getenv("GO_ENV") != "development" {
-		output = os.Stderr
+	if environment != "development" {
+		err := os.Mkdir("logs", 0750)
+		if err != nil && !os.IsExist(err) {
+			log.Fatal(err)
+		}
+		f, err := os.Create("logs/" + serviceName + "-log-" + fmt.Sprint(time.Now().Format(time.RFC3339)))
+		if err != nil {
+			fmt.Printf("Couldn't create log file, %s", err)
+		}
+		// both writes logs to both a log file and console
+		if environment == "both" {
+			output = zerolog.MultiLevelWriter(output, f)
+		} else {
+			output = f
+		}
+
 	}
 
 	return zerolog.New(output).With().Timestamp().Logger()
