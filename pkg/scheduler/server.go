@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"sync"
 	"time"
 
@@ -62,8 +63,6 @@ func RegisterHandlers() {
 			return
 		}
 
-		j.Duration = j.Duration * time.Second
-
 		// add job to level 0 and start wait time timer
 		sched.L0Lock.Lock()
 		j.WaitTime = time.Now()
@@ -73,7 +72,7 @@ func RegisterHandlers() {
 		sched.WaitTime.JobsMap[j.Id] = 0
 		sched.WaitTime.JobsCount += 1
 		sched.WaitTime.Lock.Unlock()
-		meter, _ := sched.meter.Int64UpDownCounter("jobs_in_queue")
+		meter, _ := sched.meter.Int64UpDownCounter(os.Getenv("SERVICE_NAME") + "_jobs_in_queue")
 		meter.Add(context.Background(), 1)
 		sched.L0Lock.Unlock()
 	})
