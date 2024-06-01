@@ -1,37 +1,67 @@
 package scheduler
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
+	"github.com/rs/zerolog"
+	api "go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 )
 
 type Scheduler struct {
-	Id   uint
-	Name string
-	URL  string
-	// TODO: change all queues to ordered maps
-	ReadyQueue    []Job
-	WaitQueue     []Job
-	LentQueue     []Job // Jobs in my cluster that doesn't belong to me
-	BorrowedQueue []Job // Jobs I sent to other clusters
-	WQueueLock    *sync.Mutex
-	RQueueLock    *sync.Mutex
-	LQueueLock    *sync.Mutex
-	BQueueLock    *sync.Mutex
-	Policy        PolicyType
-	Cluster       *Cluster
-	tracer        trace.Tracer
+	Id                  uint
+	Name                string
+	URL                 string
+	ReadyQueue          []Job
+	WaitQueue           []Job
+	LentQueue           []Job // Jobs in my cluster that doesn't belong to me
+	BorrowedQueue       []Job // Jobs I sent to other clusters
+	WQueueLock          *sync.Mutex
+	RQueueLock          *sync.Mutex
+	LQueueLock          *sync.Mutex
+	BQueueLock          *sync.Mutex
+	Level0              []Job // only schedule in cluster
+	Level1              []Job // allow scheduling in foreign cluster
+	L0Lock              *sync.Mutex
+	L1Lock              *sync.Mutex
+	SchedulingAlgorithm SchedulingType
+	Policy              Policy
+	Cluster             *Cluster
+	WaitTime            *WaitTime
+	tracer              trace.Tracer
+	meter               api.Meter
+	logger              zerolog.Logger
 }
 
-type PolicyType string
+type SchedulingType string
 
 const (
-	FIFO = PolicyType("FIFO")
+	FIFO  = SchedulingType("FIFO")
+	DELAY = SchedulingType("DELAY")
 )
+
+// Wait time in Milliseconds
+type WaitTime struct {
+	Lock      *sync.Mutex
+	Average   float64
+	TotalTime int64
+	JobsCount int64
+	JobsMap   map[uint]int64
+}
+
+func (w *WaitTime) GetAverage() float64 {
+	w.Lock.Lock()
+	defer w.Lock.Unlock()
+	if w.JobsCount != 0 {
+		return float64(w.TotalTime) / float64(w.JobsCount)
+	}
+	return 0
+}
 
 type Job struct {
 	Id           uint
@@ -39,7 +69,12 @@ type Job struct {
 	CoresNeeded  uint
 	State        StateType
 	Duration     time.Duration
+	WaitTime     time.Time
 	Ownership    string
+}
+
+type Policy struct {
+	MaxWaitTime time.Duration
 }
 
 type StateType string
@@ -55,6 +90,14 @@ func SetTracer(t trace.Tracer) {
 	sched.tracer = t
 }
 
+func SetMeter(m api.Meter) {
+	sched.meter = m
+}
+
+func SetLogger(logger zerolog.Logger) {
+	sched.logger = logger
+}
+
 // infinite loop to start scheduling
 func Run(clt Cluster, URL string) {
 	// initialize cluster
@@ -63,12 +106,20 @@ func Run(clt Cluster, URL string) {
 		cluster.Nodes[i].mutex = new(sync.Mutex)
 		cluster.Nodes[i].RunningJobs = make(map[uint]Job)
 	}
+	cluster.resourceMutex = new(sync.Mutex)
+	cluster.SetTotalResources()
+
+	RunMetrics()
 
 	sched.Cluster = &cluster
 	sched.URL = URL
-	switch sched.Policy {
+	sched.Policy.MaxWaitTime = 10 * time.Second
+	sched.SchedulingAlgorithm = DELAY
+	switch sched.SchedulingAlgorithm {
 	case FIFO:
 		go sched.Fifo()
+	case DELAY:
+		go sched.Delay()
 	}
 	// TODO: create channel for policy changes
 }
@@ -77,12 +128,32 @@ func Run(clt Cluster, URL string) {
 func (sched *Scheduler) ScheduleJob(j Job) error {
 	// check for node that satisfies job requirements
 	for _, node := range sched.Cluster.Nodes {
-		if node.CoresAvailable > j.CoresNeeded && node.MemoryAvailable > j.MemoryNeeded {
+		node.mutex.Lock()
+		if node.CoresAvailable >= j.CoresNeeded && node.MemoryAvailable >= j.MemoryNeeded {
+			node.mutex.Unlock()
 			go node.RunJob(j)
 			return nil
 		}
+		node.mutex.Unlock()
 	}
 	return errors.New("not enough resources in cluster")
+}
+
+func (sched *Scheduler) ScheduleJobsOnVirtual(ctx context.Context, node *Node) {
+	// Can introduce network delay simulation
+	sched.logger.Info().Msg("in ScheduleJobsOnVirtual()")
+	sched.L1Lock.Lock()
+	for _, j := range sched.Level1 {
+		node.mutex.Lock()
+		if node.CoresAvailable > j.CoresNeeded && node.MemoryAvailable > j.MemoryNeeded {
+			sched.logger.Info().Msgf("scheduled job %v on virtual", j.Id)
+			go node.RunJob(j)
+		}
+		node.mutex.Unlock()
+		// wait for job to be scheduled
+		time.Sleep(20 * time.Millisecond)
+	}
+	sched.L1Lock.Unlock()
 }
 
 func (sched *Scheduler) JobFinished(j Job) {
@@ -129,6 +200,18 @@ func (sched *Scheduler) Lend(j Job) error {
 		}
 	}
 	return errors.New("can't lend")
+}
+
+func (sched *Scheduler) GetLevel1() []Job {
+	sched.logger.Info().Msg("in GetLevel1()")
+	sched.L1Lock.Lock()
+	defer sched.L1Lock.Unlock()
+
+	var l1 = make([]Job, len(sched.Level1))
+
+	copy(l1, sched.Level1)
+	sched.logger.Info().Msgf("level1: %v l1: %v", len(sched.Level1), len(l1))
+	return l1
 }
 
 func (sched *Scheduler) Fifo() {
@@ -209,6 +292,79 @@ func (sched *Scheduler) Fifo() {
 		}
 		// all queues are empty, create a go routine that wakes me up when that changes
 		// wait for new ready chan
+		time.Sleep(1 * time.Second)
+	}
+}
+
+func (sched *Scheduler) Delay() {
+
+	counter, _ := sched.meter.Int64UpDownCounter(os.Getenv("SERVICE_NAME") + "_jobs_in_queue")
+	for {
+		sched.L1Lock.Lock()
+		if len(sched.Level1) > 0 {
+			// try to scheduler job
+			for i := 0; i < len(sched.Level1); i++ {
+
+				err := sched.ScheduleJob(sched.Level1[i])
+				// check if job got scheduled
+				sched.WaitTime.Lock.Lock()
+				sched.WaitTime.TotalTime -= sched.WaitTime.JobsMap[sched.Level1[i].Id]
+				sched.WaitTime.JobsMap[sched.Level1[i].Id] = time.Since(sched.Level1[i].WaitTime).Milliseconds()
+				sched.WaitTime.TotalTime += sched.WaitTime.JobsMap[sched.Level1[i].Id]
+				if err == nil {
+					// Send telemetry
+					// Update cluster wait time and delete job from map
+					delete(sched.WaitTime.JobsMap, sched.Level1[i].Id)
+					fmt.Printf("scheduled job %v from level 1\n", sched.Level1[i].Id)
+					// remove job from level1 queue
+					sched.Level1 = append(sched.Level1[:i], sched.Level1[i+1:]...)
+					counter.Add(context.Background(), -1)
+
+				} else {
+
+					fmt.Printf("couldn't schedule job %v from level 1\n", sched.Level1[i].Id)
+				}
+				sched.WaitTime.Lock.Unlock()
+			}
+		}
+		sched.L1Lock.Unlock()
+
+		// level 1 is empty
+		sched.L0Lock.Lock()
+		if len(sched.Level0) > 0 {
+
+			err := sched.ScheduleJob(sched.Level0[0])
+			// check if job got scheduled
+
+			sched.WaitTime.Lock.Lock()
+			sched.WaitTime.TotalTime -= sched.WaitTime.JobsMap[sched.Level0[0].Id]
+			sched.WaitTime.JobsMap[sched.Level0[0].Id] = time.Since(sched.Level0[0].WaitTime).Milliseconds()
+			sched.WaitTime.TotalTime += sched.WaitTime.JobsMap[sched.Level0[0].Id]
+			if err == nil {
+				// remove job from level1 queue
+				fmt.Printf("scheduled job %v from level 0\n", sched.Level0[0].Id)
+
+				delete(sched.WaitTime.JobsMap, sched.Level0[0].Id)
+				sched.Level0 = sched.Level0[1:]
+				counter.Add(context.Background(), -1)
+			} else {
+				fmt.Printf("couldn't schedule job %v in level 0, wait time: %v\n", sched.Level0[0].Id, sched.Level0[0].WaitTime)
+
+				// check if time exceeded to put in Level1
+				if time.Since(sched.Level0[0].WaitTime) >= sched.Policy.MaxWaitTime {
+					sched.L1Lock.Lock()
+
+					fmt.Printf("moved job %v from level 0 to level 1", sched.Level0[0].Id)
+					sched.Level1 = append(sched.Level1, sched.Level0[0])
+					sched.Level0 = sched.Level0[1:]
+					sched.L1Lock.Unlock()
+				}
+
+			}
+
+			sched.WaitTime.Lock.Unlock()
+		}
+		sched.L0Lock.Unlock()
 		time.Sleep(1 * time.Second)
 	}
 }

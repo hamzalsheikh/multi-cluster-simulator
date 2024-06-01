@@ -4,8 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math/rand"
 	"net/http"
 	"time"
+
+	exprand "golang.org/x/exp/rand"
 
 	"github.com/hamzalsheikh/multi-cluster-simulator/pkg/scheduler"
 
@@ -55,7 +58,6 @@ func (c *Client) newClient() {
 		return
 	}
 	c.Cluster = cluster
-	fmt.Printf("cluster %+v \n", cluster)
 	// TODO: change this to user input
 	c.time_dist = "poisson"
 
@@ -71,8 +73,8 @@ func (c *Client) setMaxCluster() {
 		if node.Memory > maxMem {
 			maxMem = node.Memory
 		}
-		if len(node.Cores) > int(maxCores) {
-			maxCores = uint(len(node.Cores))
+		if node.Cores > maxCores {
+			maxCores = node.Cores
 		}
 	}
 
@@ -92,10 +94,9 @@ func (c *Client) sendJobs() {
 		var j scheduler.Job
 		j.Id = id
 		// fmt.Print(c.maxJobCore)
-		j.CoresNeeded = uint(job_dist.Rand()) * c.maxJobCore // uint(rand.Intn(int(c.maxJobCore))) //uint( dist.Rand() * float64(c.maxJobCore))
-		j.Duration = 10 * time.Second
-		j.MemoryNeeded = uint(job_dist.Rand()) * c.maxJobMem // uint(rand.Intn(int(c.maxJobMem)))
-
+		j.CoresNeeded = uint(job_dist.Rand() * float64(c.maxJobCore)) // uint(rand.Intn(int(c.maxJobCore))) //uint( dist.Rand() * float64(c.maxJobCore))
+		j.Duration = time.Duration(rand.Intn(600)) * time.Second
+		j.MemoryNeeded = uint(job_dist.Rand() * float64(c.maxJobMem)) // uint(rand.Intn(int(c.maxJobMem)))
 		id++
 		return j
 	}
@@ -105,6 +106,7 @@ func (c *Client) sendJobs() {
 	case "poisson":
 		time_dist := distuv.Poisson{
 			Lambda: 10,
+			Src:    exprand.NewSource(9),
 		}
 
 		for {
@@ -119,7 +121,7 @@ func (c *Client) sendJobs() {
 				//fmt.Printf("cores: %v memory %v\n", dist.Rand(), dist.Rand())
 				j := getJob()
 				SendJob(j)
-				fmt.Printf("Job %v sent\n", j.Id)
+				fmt.Printf("Job %+v sent\n", j)
 				time.Sleep(time.Duration(time_between_jobs) * time.Second)
 
 			}

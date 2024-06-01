@@ -2,19 +2,22 @@ package scheduler
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"sync"
+	"time"
 
 	"github.com/hamzalsheikh/multi-cluster-simulator/pkg/registry"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 // create an instance of scheduler
-var sched = Scheduler{WQueueLock: new(sync.Mutex), RQueueLock: new(sync.Mutex), LQueueLock: new(sync.Mutex), BQueueLock: new(sync.Mutex), Policy: FIFO}
+var sched = Scheduler{WQueueLock: new(sync.Mutex), RQueueLock: new(sync.Mutex), LQueueLock: new(sync.Mutex), BQueueLock: new(sync.Mutex), L0Lock: new(sync.Mutex), L1Lock: new(sync.Mutex), WaitTime: &WaitTime{Lock: new(sync.Mutex), JobsMap: make(map[uint]int64)}}
 
 func RegisterHandlers() {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -45,6 +48,33 @@ func RegisterHandlers() {
 		req.Header.Set("Content-Type", "application/json")
 		_, err = httpClient.Do(req)
 
+	})
+
+	http.HandleFunc("/delay", func(w http.ResponseWriter, r *http.Request) {
+
+		fmt.Println("Job recieved!")
+		// decode job object
+		var j Job
+		dec := json.NewDecoder(r.Body)
+		err := dec.Decode(&j)
+
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		// add job to level 0 and start wait time timer
+		sched.L0Lock.Lock()
+		j.WaitTime = time.Now()
+		sched.Level0 = append(sched.Level0, j)
+
+		sched.WaitTime.Lock.Lock()
+		sched.WaitTime.JobsMap[j.Id] = 0
+		sched.WaitTime.JobsCount += 1
+		sched.WaitTime.Lock.Unlock()
+		meter, _ := sched.meter.Int64UpDownCounter(os.Getenv("SERVICE_NAME") + "_jobs_in_queue")
+		meter.Add(context.Background(), 1)
+		sched.L0Lock.Unlock()
 	})
 
 	http.HandleFunc("/borrow", func(w http.ResponseWriter, r *http.Request) {

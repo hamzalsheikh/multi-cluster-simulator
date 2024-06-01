@@ -3,9 +3,85 @@
     "Nodes": [
         {
             "Id": 1,
-            "Memory": 100,
-            "Cores": [1,2,3,4,5,6,7,8,9,10],
-            "MemoryAvailable": 100,
-            "CoresAvailable": 100
-        }]
+            "Type": "physical",
+            "Memory": 24000,
+            "Cores": 32,
+            "MemoryAvailable": 24000,
+            "CoresAvailable": 32
+        },
+
+        {
+            "Id": 2,
+            "Type": "physical",
+            "Memory": 24000,
+            "Cores": 32,
+            "MemoryAvailable": 24000,
+            "CoresAvailable": 32
+        },
+
+        {
+            "Id": 3,
+            "Type": "physical",
+            "Memory": 24000,
+            "Cores": 32,
+            "MemoryAvailable": 24000,
+            "CoresAvailable": 32
+        },
+        {
+            "Id": 4,
+            "Type": "physical",
+            "Memory": 24000,
+            "Cores": 32,
+            "MemoryAvailable": 24000,
+            "CoresAvailable": 32
+        },
+        {
+            "Id": 5,
+            "Type": "physical",
+            "Memory": 24000,
+            "Cores": 32,
+            "MemoryAvailable": 24000,
+            "CoresAvailable": 32
+        },
+        {
+            "Id": 6,
+            "Type": "physical",
+            "Memory": 24000,
+            "Cores": 32,
+            "MemoryAvailable": 24000,
+            "CoresAvailable": 32
+        },
+        {
+            "Id": 7,
+            "Type": "physical",
+            "Memory": 24000,
+            "Cores": 32,
+            "MemoryAvailable": 24000,
+            "CoresAvailable": 32
+        },
+        {
+            "Id": 8,
+            "Type": "physical",
+            "Memory": 24000,
+            "Cores": 32,
+            "MemoryAvailable": 24000,
+            "CoresAvailable": 32
+        },
+        {
+            "Id": 9,
+            "Type": "physical",
+            "Memory": 24000,
+            "Cores": 32,
+            "MemoryAvailable": 24000,
+            "CoresAvailable": 32
+        },
+        {
+            "Id": 10,
+            "Type": "physical",
+            "Memory": 24000,
+            "Cores": 32,
+            "MemoryAvailable": 24000,
+            "CoresAvailable": 32
+        }
+    ]
 }

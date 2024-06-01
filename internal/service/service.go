@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/hamzalsheikh/multi-cluster-simulator/pkg/registry"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 func Start(ctx context.Context, host, port string, reg registry.Registration,
@@ -20,11 +21,24 @@ func Start(ctx context.Context, host, port string, reg registry.Registration,
 	return ctx, nil
 }
 
+// TODO: move all server / client initializations here (from main)
+func StartWithRPC(ctx context.Context, host, port string, reg registry.Registration) (context.Context, error) {
+	ctx = startService(ctx, reg.ServiceName, host, port)
+	err := registry.RegisterService(reg)
+	if err != nil {
+		return ctx, err
+	}
+	return ctx, nil
+
+}
+
 func startService(ctx context.Context, serviceName registry.ServiceName, host, port string) context.Context {
 	ctx, cancel := context.WithCancel(ctx)
-
+	handler := http.Handler(http.DefaultServeMux)
+	handler = otelhttp.NewHandler(handler, "")
 	var server http.Server
 	server.Addr = ":" + port
+	server.Handler = handler
 
 	go func() {
 		log.Println(server.ListenAndServe())

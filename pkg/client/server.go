@@ -50,7 +50,7 @@ func SendJob(j scheduler.Job) {
 		return
 	}
 
-	req, _ := http.NewRequestWithContext(ctx, "POST", client.SchedulerURL+"/", buf)
+	req, _ := http.NewRequestWithContext(ctx, "POST", client.SchedulerURL+"/delay", buf)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Add("Referer", client.URL)
 

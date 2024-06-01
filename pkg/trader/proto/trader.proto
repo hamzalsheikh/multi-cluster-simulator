@@ -1,0 +1,49 @@
+/* 
+This file contains communication between traders (clusters)
+*/
+syntax = "proto3";
+
+option go_package = "github.com/hamzalsheikh/multi-cluster-simulator/pkg/trader";
+
+package trader;
+
+import "google/protobuf/duration.proto";
+//  service
+
+service Trader {
+  // TODO: make this a bidirectional streaming for negotiation ? 
+  rpc RequestResource(ContractRequest) returns (ContractResponse) {}
+  rpc ApproveContract(ContractResponse) returns (NodeObject){}
+
+}
+
+message ContractRequest {
+  uint32 id = 1;
+  uint32 cores = 2;
+  uint32 memory = 3;
+  google.protobuf.Duration time = 4;
+  float price = 5;
+  string trader = 6; // url from registry
+}
+
+message ContractResponse {
+  // this simulates receiving access to a node in a foreign cluster
+  uint32 id = 1;
+  bool   approve = 2;
+  uint32 cores = 3;
+  uint32 memory = 4;
+  google.protobuf.Duration time = 5;
+  float price = 6;
+  string trader = 7; // url from registry
+  // string node_url;
+  // struct node_struct; 
+}
+
+message NodeObject {
+  // the virtual node the
+  uint32  id = 1;
+  string  url = 2;
+  uint32  cores = 3;
+  uint32  memory = 4;
+  google.protobuf.Duration time = 5;
+}

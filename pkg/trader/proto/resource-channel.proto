@@ -1,0 +1,52 @@
+/*
+File containting communication between scheduler and its trader
+*/
+
+syntax = "proto3";
+
+option go_package = "github.com/hamzalsheikh/multi-cluster-simulator/pkg/trader";
+
+package trader;
+
+import "trader.proto";
+import "google/protobuf/duration.proto";
+service ResourceChannel {
+
+  rpc Start (StartParams) returns (stream ClusterState) {}
+  
+  // rpc: when policy inacted, need to calculate how much resource we need to request, 
+  rpc ProvideJobs (ProvideJobsRequest) returns (stream ProvideJobsResponse) {}
+  // rpc: receive resource node 
+  rpc ReceiveVirtualNode (NodeObject) returns (VirtualNodeResponse) {} 
+  // rpc: give access to resources
+  rpc ProvideVirtualNode (VirtualNodeRequest) returns (NodeObject) {} 
+}
+
+message StartParams {}
+
+message ClusterState {
+  // bool  tradingOn; should this be ran from the scheduler or direct from trader module
+  float cores_utilization = 1;
+  float memory_utilization = 2;
+  optional uint32 total_cpu = 3;
+  optional uint32 total_memory = 4;
+  double average_wait_time = 5;
+}
+
+message VirtualNodeRequest {
+  uint32 id = 1;
+  uint32 cores = 2;
+  uint32 memory = 3;
+  google.protobuf.Duration time = 4;
+}
+message VirtualNodeResponse {}
+
+message ProvideJobsRequest {}
+message ProvideJobsResponse {
+  repeated Job jobs = 1;
+}
+message Job {
+  uint32 cores_needed = 1;
+  uint32 memory_needed = 2;
+  google.protobuf.Duration unix_time_seconds = 3;
+}
