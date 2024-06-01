@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	stlog "log"
-	"math/rand"
 	"net"
 	"os"
 
@@ -43,7 +42,7 @@ func main() {
 		}
 	}()
 
-	scheduler.SetMeter(meterProvider.Meter("Scheduler"))
+	scheduler.SetMeter(meterProvider.Meter(os.Getenv("SERVICE_NAME") + "Scheduler"))
 	scheduler.RunMetrics()
 
 	scheduler.SetLogger(service.CreateLogger())
@@ -59,8 +58,8 @@ func main() {
 	json.Unmarshal(jsonFile, &cluster)
 
 	// choose a port randomly between 1024 to 49151
-	portnb := rand.Intn(49151-1025) + 1025
-	host, port := "localhost", fmt.Sprint(portnb)
+	portnb := 2001
+	host, port := os.Getenv("HOST"), fmt.Sprint(portnb)
 	serviceAddr := fmt.Sprintf("http://%v:%v", host, port)
 	scheduler.Run(cluster, serviceAddr)
 

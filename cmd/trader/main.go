@@ -3,17 +3,15 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
-	"math/rand"
-	"net"
-	"os"
-
 	"github.com/hamzalsheikh/multi-cluster-simulator/internal/service"
 	"github.com/hamzalsheikh/multi-cluster-simulator/pkg/registry"
 	"github.com/hamzalsheikh/multi-cluster-simulator/pkg/trader"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"log"
+	"net"
+	"os"
 
 	pb "github.com/hamzalsheikh/multi-cluster-simulator/pkg/trader/gen"
 )
@@ -43,14 +41,14 @@ func main() {
 		}
 	}()
 	trader.SetMeter(meterProvider.Meter("Trader"))
-	// choose a port randomly between 1024 to 49151
-	portnb := rand.Intn(49151-1025) + 1025
-	host, port := "localhost", fmt.Sprint(portnb)
+
+	portnb := 8888
+	host, port := os.Getenv("HOST"), fmt.Sprint(portnb)
 	serviceAddr := fmt.Sprintf("http://%v:%v", host, portnb)
 	fmt.Printf("Trader port is %v\n", port)
 
-	schedPort := os.Args[1]
-	conn, err := grpc.NewClient(fmt.Sprintf("%v:%v", host, schedPort), grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
+	schedPort := 2000
+	conn, err := grpc.NewClient(fmt.Sprintf("%v:%v", os.Getenv("SCHEDULER_HOST"), schedPort), grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -84,6 +82,6 @@ func main() {
 	}
 	//defer conn.Close()
 	client := pb.NewResourceChannelClient(conn)
-	trader.Run(fmt.Sprintf("http://%v:%v", "localhost", schedPort), grpcURL, client, service.CreateLogger())
+	trader.Run(fmt.Sprintf("http://%v:%v", os.Getenv("SCHEDULER_HOST"), schedPort), grpcURL, client, service.CreateLogger())
 
 }
