@@ -38,7 +38,7 @@ type Trader struct {
 	Tracer              trace.Tracer
 }
 
-func (t *Trader) newTrader() {
+func (t *Trader) newTrader(policy string) {
 	// request cluster information & this can include more information
 	// in the future
 	// key exchange ?
@@ -52,14 +52,32 @@ func (t *Trader) newTrader() {
 	}
 	t.Budget = -1
 
-	t.RequestPolicies = append(t.RequestPolicies,
-		requestPolicy_WaitTime{
-			MaximumWaittime: 600000,
-		},
-		requestPolicy_Utilization{
-			MemoryMax: 0.8,
-			CoreMax:   0.8,
-		})
+	switch policy {
+	case "waitTime":
+		t.Logger.Info().Msg("request policy is waitTime")
+		t.RequestPolicies = append(t.RequestPolicies,
+			requestPolicy_WaitTime{
+				MaximumWaittime: 600000,
+			})
+	case "utilization":
+		t.Logger.Info().Msg("request policy is utilization")
+		t.RequestPolicies = append(t.RequestPolicies,
+			requestPolicy_Utilization{
+				MemoryMax: 0.8,
+				CoreMax:   0.8,
+			})
+	case "both":
+		t.Logger.Info().Msg("request policy is both")
+
+		t.RequestPolicies = append(t.RequestPolicies,
+			requestPolicy_WaitTime{
+				MaximumWaittime: 600000,
+			},
+			requestPolicy_Utilization{
+				MemoryMax: 0.8,
+				CoreMax:   0.8,
+			})
+	}
 	t.State.mutex = new(sync.Mutex)
 	t.TraderClients = make(map[string]pb.TraderClient)
 }
@@ -326,7 +344,7 @@ func (t *Trader) RequestPolicyMonitor() {
 
 var trader Trader
 
-func Run(schedURL string, URL string, schedClient pb.ResourceChannelClient, logger zerolog.Logger) {
+func Run(schedURL string, URL string, schedClient pb.ResourceChannelClient, logger zerolog.Logger, policy string) {
 	trader.Logger.Info().Msg("In trader Run()")
 	trader.SchedulerURL = schedURL
 	trader.URL = URL
@@ -334,7 +352,7 @@ func Run(schedURL string, URL string, schedClient pb.ResourceChannelClient, logg
 	trader.SchedulerClient = schedClient
 	trader.Logger = logger
 	//trader.initialize_tracer()
-	trader.newTrader()
+	trader.newTrader(policy)
 
 	go trader.RequestPolicyMonitor()
 	getClusterState(trader.SchedulerClient)
