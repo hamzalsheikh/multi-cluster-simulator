@@ -146,7 +146,7 @@ func (n *Node) RunJob(j Job) {
 	n.CoresAvailable -= j.CoresNeeded
 	n.MemoryAvailable -= j.MemoryNeeded
 	n.mutex.Unlock()
-	fmt.Printf("node %v running job %v cores: %v mem: %v \n", n.Id, j.Id, n.CoresAvailable, n.MemoryAvailable)
+	sched.logger.Info().Msgf("node %v running job %v cores: %v mem: %v \n", n.Id, j.Id, n.CoresAvailable, n.MemoryAvailable)
 
 	time.Sleep(j.Duration)
 
@@ -155,8 +155,7 @@ func (n *Node) RunJob(j Job) {
 	n.CoresAvailable += j.CoresNeeded
 	n.MemoryAvailable += j.MemoryNeeded
 	n.mutex.Unlock()
-	fmt.Printf("node %v finished job %v cores: %v mem: %v\n", n.Id, j.Id, n.CoresAvailable, n.MemoryAvailable)
+	sched.logger.Info().Msgf("node %v finished job %v cores: %v mem: %v\n", n.Id, j.Id, n.CoresAvailable, n.MemoryAvailable)
 	// inform scheduler that you're done
-	// should be a http request, but call the function directly for now
 	sched.JobFinished(j)
 }
