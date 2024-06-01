@@ -23,7 +23,7 @@ func RegisterHandlers() {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		ctx, span := sched.tracer.Start(r.Context(), "job-recieved")
 		defer span.End()
-		fmt.Println("job recieved!")
+		sched.logger.Info().Msgf("job recieved!")
 		// decode job object
 		var j Job
 		dec := json.NewDecoder(r.Body)
@@ -39,10 +39,10 @@ func RegisterHandlers() {
 		defer sched.RQueueLock.Unlock()
 		//span.AddEvent("Appending to ready Queue")
 		sched.ReadyQueue = append(sched.ReadyQueue, j)
-		fmt.Printf("added job %+v to ready queue %+v\n", j, len(sched.ReadyQueue))
+		sched.logger.Info().Msgf("added job %+v to ready queue %+v\n", j, len(sched.ReadyQueue))
 
 		req, _ := http.NewRequestWithContext(ctx, "GET", r.Header.Get("Referer")+"/jobAdded", nil)
-		fmt.Printf("sending request to: %v\n", r.Header.Get("Referer")+"/jobAdded")
+		sched.logger.Info().Msgf("sending request to: %v\n", r.Header.Get("Referer")+"/jobAdded")
 
 		httpClient := http.Client{Transport: otelhttp.NewTransport(http.DefaultTransport)}
 		req.Header.Set("Content-Type", "application/json")
@@ -52,7 +52,7 @@ func RegisterHandlers() {
 
 	http.HandleFunc("/delay", func(w http.ResponseWriter, r *http.Request) {
 
-		fmt.Println("Job recieved!")
+		sched.logger.Info().Msgf("Job recieved!")
 		// decode job object
 		var j Job
 		dec := json.NewDecoder(r.Body)
@@ -78,7 +78,7 @@ func RegisterHandlers() {
 	})
 
 	http.HandleFunc("/borrow", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Println("borrow recieved!")
+		sched.logger.Info().Msgf("borrow recieved!")
 		// decode job object
 		var j Job
 		dec := json.NewDecoder(r.Body)
@@ -100,10 +100,10 @@ func RegisterHandlers() {
 			defer sched.LQueueLock.Unlock()
 
 			//j.Ownership = r.Response.Request.Host
-			fmt.Printf("ownership: %s", j.Ownership)
+			sched.logger.Info().Msgf("ownership: %s", j.Ownership)
 
 			sched.LentQueue = append(sched.LentQueue, j)
-			fmt.Printf("added job %+v to Lent Queue %+v\n", j, len(sched.LentQueue))
+			sched.logger.Info().Msgf("added job %+v to Lent Queue %+v\n", j, len(sched.LentQueue))
 			return
 		} else {
 			// check if this status means something else
@@ -113,7 +113,7 @@ func RegisterHandlers() {
 	})
 
 	http.HandleFunc("/lent", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Println("lent recieved!")
+		sched.logger.Info().Msgf("lent recieved!")
 		// decode job object
 		var j Job
 		dec := json.NewDecoder(r.Body)
@@ -133,11 +133,11 @@ func RegisterHandlers() {
 				sched.BorrowedQueue = append(sched.BorrowedQueue[:i], sched.BorrowedQueue[i+1:]...)
 			}
 		}
-		fmt.Printf("removed job %+v from borrowed queue %+v\n", j, len(sched.BorrowedQueue))
+		sched.logger.Info().Msgf("removed job %+v from borrowed queue %+v\n", j, len(sched.BorrowedQueue))
 	})
 
 	http.HandleFunc("/newClient", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Println("new Client!")
+		sched.logger.Info().Msgf("new Client!")
 		// get current cluster
 		cluster := sched.Cluster
 		// preprocessing
@@ -158,13 +158,13 @@ returns when first scheduler accepts to schedule
 or waits for schedulers to say no
 */
 func (sched *Scheduler) BorrowResources(j Job) error {
-	fmt.Printf("\nIn borrow resources\n")
+	sched.logger.Info().Msgf("\nIn borrow resources\n")
 	schedURLs, err := registry.GetProviders(registry.Scheduler)
 	if err != nil {
 		return err
 	}
 	j.Ownership = sched.URL
-	fmt.Printf("Borrow resources: got providers %s, i am %s\n", schedURLs, sched.URL)
+	sched.logger.Info().Msgf("Borrow resources: got providers %s, i am %s\n", schedURLs, sched.URL)
 
 	// create a wait chan for this dude
 	jobScheduled := make(chan error)
@@ -183,7 +183,7 @@ func (sched *Scheduler) BorrowResources(j Job) error {
 		go func(j Job, schedURL string) {
 			lender, err := url.Parse(schedURL + "/borrow")
 			if err != nil {
-				fmt.Printf("couldn't parse URL\n")
+				sched.logger.Info().Msgf("couldn't parse URL\n")
 				jobScheduled <- err
 				return
 			}
@@ -193,15 +193,15 @@ func (sched *Scheduler) BorrowResources(j Job) error {
 			err = enc.Encode(j)
 			if err != nil {
 				// should return error to borrowed requests
-				fmt.Printf("couldn't encode job\n")
+				sched.logger.Info().Msgf("couldn't encode job\n")
 				jobScheduled <- err
 				return
 			}
-			fmt.Printf("lender path is: %s but should be %s\n", lender.Path, schedURL+"/borrow")
+			sched.logger.Info().Msgf("lender path is: %s but should be %s\n", lender.Path, schedURL+"/borrow")
 			res, err := http.Post(schedURL+"/borrow", "application/json", buf)
 
 			if err != nil {
-				fmt.Printf("couldn't send job %v to scheduler %s\n", j.Id, schedURL)
+				sched.logger.Info().Msgf("couldn't send job %v to scheduler %s\n", j.Id, schedURL)
 				jobScheduled <- err
 				return
 			}
@@ -237,7 +237,7 @@ func (sched *Scheduler) BorrowResources(j Job) error {
 				*/
 
 			default:
-				fmt.Printf("error recieved in BorrowResources: %v\n", resp)
+				sched.logger.Info().Msgf("error recieved in BorrowResources: %v\n", resp)
 			}
 		}
 	}
@@ -258,10 +258,10 @@ func (e *BorrowSuccess) Error() string {
 }
 
 func (sched *Scheduler) ReturnToBorrower(j Job) {
-	fmt.Printf("in return to borrower\n")
+	sched.logger.Info().Msgf("in return to borrower\n")
 	borrower, err := url.Parse(j.Ownership + "/lent")
 	if err != nil {
-		fmt.Printf("couldn't parse borrower url\n")
+		sched.logger.Info().Msgf("couldn't parse borrower url\n")
 		return
 	}
 	buf := new(bytes.Buffer)
@@ -269,7 +269,7 @@ func (sched *Scheduler) ReturnToBorrower(j Job) {
 	// do some pre-processing of job
 	err = enc.Encode(j)
 	if err != nil {
-		fmt.Printf("couldn't encode job\n")
+		sched.logger.Info().Msgf("couldn't encode job\n")
 		return
 	}
 	attempts := 3
@@ -277,9 +277,9 @@ func (sched *Scheduler) ReturnToBorrower(j Job) {
 	for i := 0; i < attempts; i++ {
 		borrowerURL := j.Ownership + "/lent"
 		res, err := http.Post(borrowerURL, "application/json", buf)
-		fmt.Printf("sent job %v completion to scheduler with URL: %s\n", j.Id, borrower.Path)
+		sched.logger.Info().Msgf("sent job %v completion to scheduler with URL: %s\n", j.Id, borrower.Path)
 		if err != nil {
-			fmt.Printf("couldn't send job to scheduler %s err %s\n", borrower.Path, err)
+			sched.logger.Info().Msgf("couldn't send job to scheduler %s err %s\n", borrower.Path, err)
 			return
 		}
 

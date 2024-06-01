@@ -3,7 +3,6 @@ package scheduler
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
 	"sync"
 	"time"
@@ -225,16 +224,16 @@ func (sched *Scheduler) Fifo() {
 			if err == nil {
 				// remove from queue when successful
 				sched.WaitQueue = sched.WaitQueue[1:]
-				fmt.Printf("sent job %v to node from wait queue\n", sched.WaitQueue[0].Id)
+				sched.logger.Info().Msgf("sent job %v to node from wait queue\n", sched.WaitQueue[0].Id)
 
 			} else {
 				// not enough resources after waiting in wait queue, try borrowing resources
 				// needs to be concurrent, bring back the job to top of queue if failed
-				fmt.Printf("not enough resources for job: %v\nTrying to borrow\n", sched.WaitQueue[0].Id)
+				sched.logger.Info().Msgf("not enough resources for job: %v\nTrying to borrow\n", sched.WaitQueue[0].Id)
 
 				err := sched.BorrowResources(sched.WaitQueue[0])
 				if err == nil {
-					fmt.Printf("successfully borrowed resources for j %v\n", sched.WaitQueue[0].Id)
+					sched.logger.Info().Msgf("successfully borrowed resources for j %v\n", sched.WaitQueue[0].Id)
 
 					// TODO: add to borrowedQueue
 					sched.BQueueLock.Lock()
@@ -261,13 +260,13 @@ func (sched *Scheduler) Fifo() {
 			sched.ReadyQueue = sched.ReadyQueue[1:]
 
 			sched.RQueueLock.Unlock()
-			fmt.Printf("sent job %v to node from ready queue\n", j.Id)
+			sched.logger.Info().Msgf("sent job %v to node from ready queue\n", j.Id)
 			if err != nil {
 				sched.WQueueLock.Lock()
 				j.State = WAITING
 				sched.WaitQueue = append(sched.WaitQueue, j)
 				sched.WQueueLock.Unlock()
-				fmt.Printf("sent job %v to wait queue\n", j.Id)
+				sched.logger.Info().Msgf("sent job %v to wait queue\n", j.Id)
 
 			}
 			// time.Sleep(1 * time.Second)
@@ -315,14 +314,14 @@ func (sched *Scheduler) Delay() {
 					// Send telemetry
 					// Update cluster wait time and delete job from map
 					delete(sched.WaitTime.JobsMap, sched.Level1[i].Id)
-					fmt.Printf("scheduled job %v from level 1\n", sched.Level1[i].Id)
+					sched.logger.Info().Msgf("scheduled job %v from level 1\n", sched.Level1[i].Id)
 					// remove job from level1 queue
 					sched.Level1 = append(sched.Level1[:i], sched.Level1[i+1:]...)
 					counter.Add(context.Background(), -1)
 
 				} else {
 
-					fmt.Printf("couldn't schedule job %v from level 1\n", sched.Level1[i].Id)
+					sched.logger.Info().Msgf("couldn't schedule job %v from level 1\n", sched.Level1[i].Id)
 				}
 				sched.WaitTime.Lock.Unlock()
 			}
@@ -342,19 +341,19 @@ func (sched *Scheduler) Delay() {
 			sched.WaitTime.TotalTime += sched.WaitTime.JobsMap[sched.Level0[0].Id]
 			if err == nil {
 				// remove job from level1 queue
-				fmt.Printf("scheduled job %v from level 0\n", sched.Level0[0].Id)
+				sched.logger.Info().Msgf("scheduled job %v from level 0\n", sched.Level0[0].Id)
 
 				delete(sched.WaitTime.JobsMap, sched.Level0[0].Id)
 				sched.Level0 = sched.Level0[1:]
 				counter.Add(context.Background(), -1)
 			} else {
-				fmt.Printf("couldn't schedule job %v in level 0, wait time: %v\n", sched.Level0[0].Id, sched.Level0[0].WaitTime)
+				sched.logger.Info().Msgf("couldn't schedule job %v in level 0, wait time: %v\n", sched.Level0[0].Id, sched.Level0[0].WaitTime)
 
 				// check if time exceeded to put in Level1
 				if time.Since(sched.Level0[0].WaitTime) >= sched.Policy.MaxWaitTime {
 					sched.L1Lock.Lock()
 
-					fmt.Printf("moved job %v from level 0 to level 1", sched.Level0[0].Id)
+					sched.logger.Info().Msgf("moved job %v from level 0 to level 1", sched.Level0[0].Id)
 					sched.Level1 = append(sched.Level1, sched.Level0[0])
 					sched.Level0 = sched.Level0[1:]
 					sched.L1Lock.Unlock()
