@@ -130,8 +130,7 @@ func (sched *Scheduler) ScheduleJob(j Job) error {
 		node.mutex.Lock()
 		if node.CoresAvailable >= j.CoresNeeded && node.MemoryAvailable >= j.MemoryNeeded {
 			node.mutex.Unlock()
-			go node.RunJob(j)
-			return nil
+			return node.RunJob(j)
 		}
 		node.mutex.Unlock()
 	}

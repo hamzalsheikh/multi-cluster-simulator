@@ -138,7 +138,7 @@ type Node struct {
 }
 
 // simulate running a job
-func (n *Node) RunJob(j Job) {
+func (n *Node) RunJob(j Job) error {
 
 	// update node state
 	n.mutex.Lock()
@@ -147,7 +147,11 @@ func (n *Node) RunJob(j Job) {
 	n.MemoryAvailable -= j.MemoryNeeded
 	n.mutex.Unlock()
 	sched.logger.Info().Msgf("node %v running job %v cores: %v mem: %v \n", n.Id, j.Id, n.CoresAvailable, n.MemoryAvailable)
+	go n.FinishJob(j)
+	return nil
+}
 
+func (n *Node) FinishJob(j Job) error {
 	time.Sleep(j.Duration)
 
 	n.mutex.Lock()
@@ -158,4 +162,5 @@ func (n *Node) RunJob(j Job) {
 	sched.logger.Info().Msgf("node %v finished job %v cores: %v mem: %v\n", n.Id, j.Id, n.CoresAvailable, n.MemoryAvailable)
 	// inform scheduler that you're done
 	sched.JobFinished(j)
+	return nil
 }
