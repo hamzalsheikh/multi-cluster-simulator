@@ -108,8 +108,8 @@ func Run(clt Cluster, URL string) {
 	}
 	cluster.resourceMutex = new(sync.Mutex)
 	cluster.SetTotalResources()
-
-	RunMetrics()
+	cluster.collectMetrics()
+	//RunMetrics()
 
 	sched.Cluster = &cluster
 	sched.URL = URL
