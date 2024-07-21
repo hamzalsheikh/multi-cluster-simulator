@@ -5,10 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"os"
 	"sync"
 	"time"
 
 	pb "github.com/hamzalsheikh/multi-cluster-simulator/pkg/trader/gen"
+	"go.opentelemetry.io/otel/metric"
 )
 
 type Cluster struct {
@@ -59,7 +61,43 @@ func (c *Cluster) GetResourceUtilization() (float32, float32) {
 	total_core, total_mem := c.GetTotalResources()
 	fmt.Printf("util %v %v\n", c.CoreUtilization, c.MemoryUtilization)
 	fmt.Printf("%v %v\n", total_core, total_mem)
-	return c.CoreUtilization / float32(total_core), c.MemoryUtilization / float32(total_mem)
+
+	coreUtil, memUtil := c.CoreUtilization/float32(total_core), c.MemoryUtilization/float32(total_mem)
+	sched.logger.Info().Msgf("utilization core: %v, memory %v", coreUtil, memUtil)
+	recordUtilization(float64(coreUtil), float64(memUtil))
+	return coreUtil, memUtil
+}
+
+func recordUtilization(coreUtil float64, memUtil float64) {
+
+	sched.meter.Float64ObservableGauge(
+		os.Getenv("SERVICE_NAME"+"_memory_utilization"),
+		metric.WithFloat64Callback(
+			func(ctx context.Context, fo metric.Float64Observer) error {
+				fo.Observe(memUtil)
+				return nil
+			},
+		),
+	)
+
+	sched.meter.Float64ObservableGauge(
+		os.Getenv("SERVICE_NAME"+"_core_utilization"),
+		metric.WithFloat64Callback(
+			func(ctx context.Context, fo metric.Float64Observer) error {
+				fo.Observe(coreUtil)
+				return nil
+			},
+		),
+	)
+}
+
+func (c *Cluster) collectMetrics() {
+	for !sched.traderConnected {
+
+		coreUtil, memUtil := c.GetResourceUtilization()
+		recordUtilization(float64(coreUtil), float64(memUtil))
+		time.Sleep(5 * time.Second)
+	}
 }
 
 func (c *Cluster) AddVirtualNode(ctx context.Context, node *pb.NodeObject) {

@@ -22,6 +22,7 @@ func NewtraderServer() *traderServer {
 }
 
 func (s *traderServer) Start(params *pb.StartParams, stream pb.ResourceChannel_StartServer) error {
+	sched.traderConnected = true
 	for {
 		var currentClusterState pb.ClusterState
 		var core, mem uint32

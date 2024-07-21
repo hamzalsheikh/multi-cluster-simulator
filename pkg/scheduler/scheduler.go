@@ -35,6 +35,7 @@ type Scheduler struct {
 	tracer              trace.Tracer
 	meter               api.Meter
 	logger              zerolog.Logger
+	traderConnected     bool
 }
 
 type SchedulingType string
@@ -297,6 +298,12 @@ func (sched *Scheduler) Fifo() {
 func (sched *Scheduler) Delay() {
 
 	counter, _ := sched.meter.Int64UpDownCounter(os.Getenv("SERVICE_NAME") + "_jobs_in_queue")
+	hist, _ := sched.meter.Int64Histogram(
+		os.Getenv("SERVICE_NAME")+"_jobs_wait_time",
+		api.WithUnit("ms"),
+		api.WithDescription("Job wait time"),
+	)
+
 	for {
 		sched.L1Lock.Lock()
 		if len(sched.Level1) > 0 {
@@ -313,6 +320,7 @@ func (sched *Scheduler) Delay() {
 					// Send telemetry
 					// Update cluster wait time and delete job from map
 					delete(sched.WaitTime.JobsMap, sched.Level1[i].Id)
+					hist.Record(context.Background(), sched.WaitTime.JobsMap[sched.Level1[i].Id])
 					sched.logger.Info().Msgf("scheduled job %v from level 1\n", sched.Level1[i].Id)
 					// remove job from level1 queue
 					sched.Level1 = append(sched.Level1[:i], sched.Level1[i+1:]...)
@@ -342,6 +350,7 @@ func (sched *Scheduler) Delay() {
 				// remove job from level1 queue
 				sched.logger.Info().Msgf("scheduled job %v from level 0\n", sched.Level0[0].Id)
 
+				hist.Record(context.Background(), sched.WaitTime.JobsMap[sched.Level1[0].Id])
 				delete(sched.WaitTime.JobsMap, sched.Level0[0].Id)
 				sched.Level0 = sched.Level0[1:]
 				counter.Add(context.Background(), -1)
