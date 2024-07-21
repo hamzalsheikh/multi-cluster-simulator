@@ -95,7 +95,7 @@ func (c *Client) sendJobs() {
 		j.Id = id
 		// fmt.Print(c.maxJobCore)
 		j.CoresNeeded = uint(job_dist.Rand() * float64(c.maxJobCore)) // uint(rand.Intn(int(c.maxJobCore))) //uint( dist.Rand() * float64(c.maxJobCore))
-		j.Duration = time.Duration(rand.Intn(600)) * time.Second
+		j.Duration = 1 + time.Duration(rand.Intn(30))*time.Second
 		j.MemoryNeeded = uint(job_dist.Rand() * float64(c.maxJobMem)) // uint(rand.Intn(int(c.maxJobMem)))
 		id++
 		return j
@@ -105,7 +105,7 @@ func (c *Client) sendJobs() {
 	switch c.time_dist {
 	case "poisson":
 		time_dist := distuv.Poisson{
-			Lambda: 10,
+			Lambda: 100,
 			Src:    exprand.NewSource(9),
 		}
 
@@ -113,7 +113,7 @@ func (c *Client) sendJobs() {
 			// each for loop is one minute, lambda jobs per minute is sent
 			jobs := int(time_dist.Rand())
 			// fmt.Printf("jobs per minute: %v", jobs)
-			time_between_jobs := 60 / jobs
+			time_between_jobs := 60000 / jobs
 			i := 0
 			for i < jobs {
 				i++
@@ -122,7 +122,7 @@ func (c *Client) sendJobs() {
 				j := getJob()
 				SendJob(j)
 				fmt.Printf("Job %+v sent\n", j)
-				time.Sleep(time.Duration(time_between_jobs) * time.Second)
+				time.Sleep(time.Duration(time_between_jobs) * time.Millisecond)
 
 			}
 
