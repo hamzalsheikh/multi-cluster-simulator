@@ -101,16 +101,10 @@ func SetLogger(logger zerolog.Logger) {
 // infinite loop to start scheduling
 func Run(clt Cluster, URL string) {
 	// initialize cluster
-	cluster := clt
-	for i := 0; i < len(cluster.Nodes); i++ {
-		cluster.Nodes[i].mutex = new(sync.Mutex)
-		cluster.Nodes[i].RunningJobs = make(map[uint]Job)
+	cluster, err := InitCluster(clt)
+	if err != nil {
+		panic("couldn't initialize cluster")
 	}
-	cluster.resourceMutex = new(sync.Mutex)
-	cluster.SetTotalResources()
-	cluster.collectMetrics()
-	//RunMetrics()
-
 	sched.Cluster = &cluster
 	sched.URL = URL
 	sched.Policy.MaxWaitTime = 10 * time.Second
@@ -350,7 +344,7 @@ func (sched *Scheduler) Delay() {
 				// remove job from level1 queue
 				sched.logger.Info().Msgf("scheduled job %v from level 0\n", sched.Level0[0].Id)
 
-				hist.Record(context.Background(), sched.WaitTime.JobsMap[sched.Level1[0].Id])
+				hist.Record(context.Background(), sched.WaitTime.JobsMap[sched.Level0[0].Id])
 				delete(sched.WaitTime.JobsMap, sched.Level0[0].Id)
 				sched.Level0 = sched.Level0[1:]
 				counter.Add(context.Background(), -1)

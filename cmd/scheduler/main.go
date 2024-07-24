@@ -43,7 +43,6 @@ func main() {
 	}()
 
 	scheduler.SetMeter(meterProvider.Meter(os.Getenv("SERVICE_NAME") + "Scheduler"))
-	scheduler.RunMetrics()
 
 	scheduler.SetLogger(service.CreateLogger())
 

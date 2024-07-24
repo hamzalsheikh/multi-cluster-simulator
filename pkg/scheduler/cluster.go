@@ -3,7 +3,6 @@ package scheduler
 import (
 	"context"
 	"errors"
-	"fmt"
 	"math"
 	"os"
 	"sync"
@@ -11,6 +10,7 @@ import (
 
 	pb "github.com/hamzalsheikh/multi-cluster-simulator/pkg/trader/gen"
 	"go.opentelemetry.io/otel/metric"
+	api "go.opentelemetry.io/otel/metric"
 )
 
 type Cluster struct {
@@ -23,6 +23,21 @@ type Cluster struct {
 	MemoryUtilization float32
 	CoreUtilization   float32
 	resourceMutex     *sync.Mutex
+}
+
+func InitCluster(clt Cluster) (Cluster, error) {
+	cluster := clt
+	for i := 0; i < len(cluster.Nodes); i++ {
+		cluster.Nodes[i].mutex = new(sync.Mutex)
+		cluster.Nodes[i].RunningJobs = make(map[uint]Job)
+	}
+	cluster.resourceMutex = new(sync.Mutex)
+	cluster.SetTotalResources()
+
+	go cluster.updateUtilization(10 * time.Second)
+	cluster.recordUtilization()
+
+	return cluster, nil
 }
 
 func (c *Cluster) SetTotalResources() error {
@@ -45,11 +60,10 @@ func (c *Cluster) GetTotalResources() (uint32, uint32) {
 	return c.TotalCore, c.TotalMemory
 }
 
-func (c *Cluster) GetResourceUtilization() (float32, float32) {
+func (c *Cluster) SetResourceUtilization() {
 	c.resourceMutex.Lock()
 	defer c.resourceMutex.Unlock()
 
-	fmt.Printf("in GetResourceUtilization()\n")
 	c.CoreUtilization = 0
 	c.MemoryUtilization = 0
 	for _, node := range c.Nodes {
@@ -59,44 +73,64 @@ func (c *Cluster) GetResourceUtilization() (float32, float32) {
 		node.mutex.Unlock()
 	}
 	total_core, total_mem := c.GetTotalResources()
-	fmt.Printf("util %v %v\n", c.CoreUtilization, c.MemoryUtilization)
-	fmt.Printf("%v %v\n", total_core, total_mem)
 
-	coreUtil, memUtil := c.CoreUtilization/float32(total_core), c.MemoryUtilization/float32(total_mem)
-	sched.logger.Info().Msgf("utilization core: %v, memory %v", coreUtil, memUtil)
-	recordUtilization(float64(coreUtil), float64(memUtil))
-	return coreUtil, memUtil
+	c.CoreUtilization, c.MemoryUtilization = c.CoreUtilization/float32(total_core), c.MemoryUtilization/float32(total_mem)
+	sched.logger.Info().Msgf("utilization core: %v, memory %v", c.CoreUtilization, c.MemoryUtilization)
 }
 
-func recordUtilization(coreUtil float64, memUtil float64) {
+func (c *Cluster) GetResourceUtilization() (float32, float32) {
+	c.resourceMutex.Lock()
+	defer c.resourceMutex.Unlock()
+
+	return c.CoreUtilization, c.MemoryUtilization
+}
+
+func (c *Cluster) recordUtilization() {
+
+	gauge, err := sched.meter.Float64ObservableGauge(
+		os.Getenv("SERVICE_NAME")+"_memory_utilization",
+		api.WithUnit("%"),
+		api.WithDescription("reports memory utilization between 0 and 1"),
+	)
+
+	if err != nil {
+		sched.logger.Info().Msgf("error creating memory utilization gauge: %v", err)
+	}
+
+	_, err = sched.meter.RegisterCallback(
+		func(_ context.Context, o metric.Observer) error {
+			c.resourceMutex.Lock()
+			defer c.resourceMutex.Unlock()
+
+			o.ObserveFloat64(gauge, float64(c.MemoryUtilization))
+			return nil
+		},
+		gauge,
+	)
+
+	if err != nil {
+		sched.logger.Info().Msg("error registring core utilization callback")
+	}
 
 	sched.meter.Float64ObservableGauge(
-		os.Getenv("SERVICE_NAME"+"_memory_utilization"),
+		os.Getenv("SERVICE_NAME")+"_core_utilization",
 		metric.WithFloat64Callback(
 			func(ctx context.Context, fo metric.Float64Observer) error {
-				fo.Observe(memUtil)
+				c.resourceMutex.Lock()
+				defer c.resourceMutex.Unlock()
+
+				fo.Observe(float64(c.CoreUtilization))
 				return nil
 			},
 		),
 	)
-
-	sched.meter.Float64ObservableGauge(
-		os.Getenv("SERVICE_NAME"+"_core_utilization"),
-		metric.WithFloat64Callback(
-			func(ctx context.Context, fo metric.Float64Observer) error {
-				fo.Observe(coreUtil)
-				return nil
-			},
-		),
-	)
 }
 
-func (c *Cluster) collectMetrics() {
-	for !sched.traderConnected {
-
-		coreUtil, memUtil := c.GetResourceUtilization()
-		recordUtilization(float64(coreUtil), float64(memUtil))
-		time.Sleep(5 * time.Second)
+func (c *Cluster) updateUtilization(period time.Duration) {
+	for {
+		// update utilization
+		c.SetResourceUtilization()
+		time.Sleep(period)
 	}
 }
 
