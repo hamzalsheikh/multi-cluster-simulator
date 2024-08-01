@@ -3,7 +3,6 @@ package scheduler
 import (
 	"context"
 	"errors"
-	"math"
 	"os"
 	"sync"
 	"time"
@@ -32,6 +31,7 @@ func InitCluster(clt Cluster) (Cluster, error) {
 		cluster.Nodes[i].RunningJobs = make(map[uint]Job)
 	}
 	cluster.resourceMutex = new(sync.Mutex)
+	cluster.nodesMutex = new(sync.Mutex)
 	cluster.SetTotalResources()
 
 	go cluster.updateUtilization(10 * time.Second)
@@ -135,10 +135,10 @@ func (c *Cluster) updateUtilization(period time.Duration) {
 }
 
 func (c *Cluster) AddVirtualNode(ctx context.Context, node *pb.NodeObject) {
-	sched.logger.Info().Msg("in AddVirtualNode()")
+	sched.logger.Info().Msgf("in AddVirtualNode()\n node: %+v")
 	var n Node
 	n.Type = "Virtual"
-	n.Id = uint(node.Id)
+	n.Id = uint(len(c.Nodes))
 	n.Cores = uint(node.Cores)
 	n.Memory = uint(node.Memory)
 	n.CoresAvailable = uint(node.Cores)
@@ -149,47 +149,62 @@ func (c *Cluster) AddVirtualNode(ctx context.Context, node *pb.NodeObject) {
 	n.RunningJobs = make(map[uint]Job)
 	sched.logger.Info().Msgf("created node %+v", n)
 	c.Nodes = append(c.Nodes, &n)
-	//sched.ScheduleJobsOnVirtual(ctx, &n)
-	//	time.Sleep(time.Duration(n.Time) * time.Millisecond)
 
-	//idx := slices.Index(c.Nodes, &n)
+	go c.RemoveVirtualNode(ctx, n)
 
+}
+
+func (c *Cluster) RemoveVirtualNode(ctx context.Context, n Node) {
+	time.Sleep(n.Time)
+	sched.logger.Info().Msg("in RemoveVirtualNode()")
+	c.nodesMutex.Lock()
+	defer c.nodesMutex.Unlock()
+
+	for i, node := range c.Nodes {
+		if node.Id == n.Id && node.Type == "Virtual" {
+			// order is not important
+			c.Nodes[i] = c.Nodes[len(c.Nodes)-1]
+			c.Nodes = c.Nodes[:len(c.Nodes)-1]
+			sched.logger.Info().Msgf("virtual Node %v successfully removed", n.Id)
+		}
+	}
 }
 
 func (c *Cluster) AllocateVirtualNodeResources(req *pb.VirtualNodeRequest) error {
 	sched.logger.Info().Msg("in AllocateVirtualNodeResources()")
 	for _, node := range c.Nodes {
-		if req.Memory <= 0 && req.Cores <= 0 {
+		if req.Memory == 0 && req.Cores == 0 {
 			break
 		}
 		node.mutex.Lock()
-		var mem_diff float64
-		var core_diff float64
-		if req.Memory > 0 {
-			mem_diff = math.Abs(float64(req.Memory) - float64(node.MemoryAvailable))
-		}
-
-		if req.Cores > 0 {
-			core_diff = math.Abs(float64(req.Cores) - float64(node.CoresAvailable))
-		}
-
-		if mem_diff > float64(req.Memory) {
-			req.Memory = 0
-		} else {
-			req.Memory -= uint32(mem_diff)
-		}
-
-		if core_diff > float64(req.Cores) {
+		var cores uint
+		var memory uint
+		if node.CoresAvailable >= uint(req.Cores) {
+			cores = uint(req.Cores)
 			req.Cores = 0
 		} else {
-			req.Cores -= uint32(core_diff)
+			cores = node.CoresAvailable
+			req.Cores -= uint32(node.CoresAvailable)
 		}
 
-		go node.RunJob(Job{Id: uint(req.Id), CoresNeeded: uint(core_diff), MemoryNeeded: uint(mem_diff), Duration: req.Time.AsDuration(), Ownership: "Foreign"})
+		if node.MemoryAvailable >= uint(req.Memory) {
+			memory = uint(req.Memory)
+			req.Memory = 0
+		} else {
+			memory = node.MemoryAvailable
+			req.Memory -= uint32(node.MemoryAvailable)
+		}
+
+		sched.logger.Info().Msgf("req.Cores: %v req.Mem %v\n", req.Cores, req.Memory)
 		node.mutex.Unlock()
+		err := node.RunJob(Job{Id: uint(req.Id), CoresNeeded: cores, MemoryNeeded: memory, Duration: req.Time.AsDuration(), Ownership: "External"})
+		if err != nil {
+			sched.logger.Error().Err(err).Msgf("Error running job on node %v", node.Id)
+		}
 	}
 	if req.Cores > 0 || req.Memory > 0 {
 		// generally speaking this should not happen
+		sched.logger.Info().Msgf("the request is not fully accounted for: cores %v or memory %v", req.Cores, req.Memory)
 		return errors.New("couldn't schedule enough resources")
 	}
 	sched.logger.Info().Msg("successfully allocated resources for trade")
