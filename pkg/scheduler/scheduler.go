@@ -32,6 +32,8 @@ type Scheduler struct {
 	Policy              Policy
 	Cluster             *Cluster
 	WaitTime            *WaitTime
+	TotalWaitTime       float64
+	TotalJobs           int
 	tracer              trace.Tracer
 	meter               api.Meter
 	logger              zerolog.Logger
@@ -57,8 +59,8 @@ type WaitTime struct {
 func (w *WaitTime) GetAverage() float64 {
 	w.Lock.Lock()
 	defer w.Lock.Unlock()
-	if w.JobsCount != 0 {
-		return float64(w.TotalTime) / float64(w.JobsCount)
+	if len(w.JobsMap) != 0 {
+		return float64(w.TotalTime) / float64(len(w.JobsMap))
 	}
 	return 0
 }
@@ -105,7 +107,7 @@ func Run(clt Cluster, URL string) {
 	if err != nil {
 		panic("couldn't initialize cluster")
 	}
-	sched.Cluster = &cluster
+	sched.Cluster = cluster
 	sched.URL = URL
 	sched.Policy.MaxWaitTime = 10 * time.Second
 	sched.SchedulingAlgorithm = DELAY
@@ -312,9 +314,11 @@ func (sched *Scheduler) Delay() {
 				if err == nil {
 					// Send telemetry
 					// Update cluster wait time and delete job from map
-					sched.logger.Info().Msgf("scheduled job %v from level 1, wait time %v\n", sched.Level1[i].Id, sched.WaitTime.JobsMap[sched.Level1[i].Id]) // remove job from level1 queue
-					delete(sched.WaitTime.JobsMap, sched.Level1[i].Id)
 					hist.Record(context.Background(), sched.WaitTime.JobsMap[sched.Level1[i].Id])
+					sched.TotalWaitTime += float64(sched.WaitTime.JobsMap[sched.Level1[i].Id])
+					sched.TotalJobs += 1
+					sched.logger.Info().Msgf("scheduled job %v from level 1, global wait time %v\n", sched.Level1[i].Id, sched.TotalWaitTime/float64(sched.TotalJobs)) // remove job from level1 queue
+					delete(sched.WaitTime.JobsMap, sched.Level1[i].Id)
 					sched.Level1 = append(sched.Level1[:i], sched.Level1[i+1:]...)
 					counter.Add(context.Background(), -1)
 
@@ -341,6 +345,9 @@ func (sched *Scheduler) Delay() {
 				// remove job from level1 queue
 				sched.logger.Info().Msgf("scheduled job %v from level 0, wait time %v\n", sched.Level0[0].Id, sched.WaitTime.JobsMap[sched.Level0[0].Id])
 				hist.Record(context.Background(), sched.WaitTime.JobsMap[sched.Level0[0].Id])
+				sched.TotalWaitTime += float64(sched.WaitTime.JobsMap[sched.Level0[0].Id])
+				sched.TotalJobs += 1
+				sched.logger.Info().Msgf("scheduled job %v from level 0, global wait time %v\n", sched.Level0[0].Id, sched.TotalWaitTime/float64(sched.TotalJobs))
 				delete(sched.WaitTime.JobsMap, sched.Level0[0].Id)
 				sched.Level0 = sched.Level0[1:]
 				counter.Add(context.Background(), -1)
@@ -359,7 +366,6 @@ func (sched *Scheduler) Delay() {
 				}
 
 			}
-
 			sched.WaitTime.Lock.Unlock()
 		}
 		sched.L0Lock.Unlock()

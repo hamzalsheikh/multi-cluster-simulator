@@ -24,7 +24,7 @@ type Cluster struct {
 	resourceMutex     *sync.Mutex
 }
 
-func InitCluster(clt Cluster) (Cluster, error) {
+func InitCluster(clt Cluster) (*Cluster, error) {
 	cluster := clt
 	for i := 0; i < len(cluster.Nodes); i++ {
 		cluster.Nodes[i].mutex = new(sync.Mutex)
@@ -37,7 +37,7 @@ func InitCluster(clt Cluster) (Cluster, error) {
 	go cluster.updateUtilization(10 * time.Second)
 	cluster.recordUtilization()
 
-	return cluster, nil
+	return &cluster, nil
 }
 
 func (c *Cluster) SetTotalResources() error {
@@ -75,7 +75,7 @@ func (c *Cluster) SetResourceUtilization() {
 	total_core, total_mem := c.GetTotalResources()
 
 	c.CoreUtilization, c.MemoryUtilization = c.CoreUtilization/float32(total_core), c.MemoryUtilization/float32(total_mem)
-	sched.logger.Info().Msgf("utilization core: %v, memory %v", c.CoreUtilization, c.MemoryUtilization)
+	sched.logger.Info().Msgf("utilization core: %v, memory %v", c, c.CoreUtilization, c.MemoryUtilization)
 }
 
 func (c *Cluster) GetResourceUtilization() (float32, float32) {
