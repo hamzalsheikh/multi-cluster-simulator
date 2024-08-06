@@ -31,6 +31,7 @@ type Trader struct {
 	SchedulerClient     pb.ResourceChannelClient   // gRPC client
 	TraderClients       map[string]pb.TraderClient // gRPC client
 	Budget              float32
+	BudgetMutex         *sync.Mutex
 	MaximimumCoreCost   float32 // per second
 	MaximimumMemoryCost float32 // per second
 	Logger              zerolog.Logger
@@ -51,6 +52,8 @@ func (t *Trader) newTrader(policy string) {
 		MinimumMemoryIncentive: -1,
 	}
 	t.Budget = -1
+	t.MaximimumCoreCost = 0
+	t.MaximimumMemoryCost = 0
 
 	switch policy {
 	case "waitTime":
@@ -79,6 +82,7 @@ func (t *Trader) newTrader(policy string) {
 			})
 	}
 	t.State.mutex = new(sync.Mutex)
+	t.BudgetMutex = new(sync.Mutex)
 	t.TraderClients = make(map[string]pb.TraderClient)
 }
 
@@ -156,6 +160,21 @@ func (r requestPolicy_WaitTime) Broken(cs clusterState) bool {
 	return cs.AverageWaitTime > r.MaximumWaittime
 }
 
+// incentive modeled over Azure Cloud Services
+func (t *Trader) GetMinimumIncentive(coreUtil float32, memUtil float32) float64 {
+	// if budget is -1, environment is cooperative
+	if t.Budget == -1 {
+		return 0
+	}
+	if coreUtil < 0.4 && memUtil < 0.4 {
+		return 0.005
+	} else if coreUtil < 0.6 && memUtil < 0.6 {
+		return 0.01
+	} else {
+		return 0.02
+	}
+}
+
 func (t *Trader) ApproveTrade(ctx context.Context, contract *pb.ContractRequest) bool {
 	t.Logger.Info().Msg("in ApproveTrade()")
 	_, span := t.Tracer.Start(ctx, "ApproveTrade")
@@ -169,7 +188,8 @@ func (t *Trader) ApproveTrade(ctx context.Context, contract *pb.ContractRequest)
 		if availableCore >= float32(contract.Cores) && availableMem >= float32(contract.Memory) {
 			// check incentive
 			// If traders are not trading with incentives, price is expected to be 0 and the minimum price would be negative
-			incentive := t.ApprovePolicy.MinimumCoreIncentive*float64(contract.Cores)*contract.Time.AsDuration().Seconds() + t.ApprovePolicy.MinimumMemoryIncentive*float64(contract.Memory)*contract.Time.AsDuration().Seconds()
+			//incentive := t.ApprovePolicy.MinimumCoreIncentive*float64(contract.Cores)*contract.Time.AsDuration().Seconds() + t.ApprovePolicy.MinimumMemoryIncentive*float64(contract.Memory)*contract.Time.AsDuration().Seconds()
+			incentive := t.GetMinimumIncentive(clusterState.CoreUtilization, clusterState.MemoryUtilization)
 			if float64(contract.Price) >= incentive {
 				t.Logger.Info().Msgf("Approved trade with contract ID: %v", contract.Id)
 				span.AddEvent("Approved trade")
@@ -307,16 +327,29 @@ func (t *Trader) RequestPolicyMonitor() {
 				ctx, span := t.Tracer.Start(context.Background(), "utilization policy broken")
 				t.Logger.Info().Msg("utilization policy broken")
 				contract = calculateContractRequest(ctx, trader.SchedulerClient, smallNode)
+				if t.Budget != -1 {
+					price := t.MaximimumCoreCost*float32(contract.Time.Seconds) + t.MaximimumMemoryCost*float32(contract.Time.Seconds)
+					if price > t.Budget {
+						contract.Price = t.Budget
+					} else {
+						contract.Price = price
+					}
+				}
 				t.Logger.Info().Msgf("contract created %v", contract.Id)
 				err := trader.Trade(ctx, contract)
 				span.End()
 				// wait after trade, arbitrary numbers used here,
 				if err == nil {
 					t.Logger.Info().Msg("Trade was successful")
-					time.Sleep(4 * time.Minute)
+					if t.Budget != -1 {
+						t.BudgetMutex.Lock()
+						t.Budget -= contract.Price
+						t.BudgetMutex.Unlock()
+					}
+					time.Sleep(2 * time.Minute)
 				} else {
 					t.Logger.Info().Msg("Trade was not successul, waiting before initiating a new trade")
-					time.Sleep(2 * time.Minute)
+					time.Sleep(1 * time.Minute)
 				}
 
 			} else if policy.Broken(cs) {
@@ -324,6 +357,14 @@ func (t *Trader) RequestPolicyMonitor() {
 
 				t.Logger.Info().Msg("wait time policy broken")
 				contract = calculateContractRequest(ctx, trader.SchedulerClient, fastNode)
+				if t.Budget != -1 {
+					price := t.MaximimumCoreCost*float32(contract.Time.Seconds) + t.MaximimumMemoryCost*float32(contract.Time.Seconds)
+					if price > t.Budget {
+						contract.Price = t.Budget
+					} else {
+						contract.Price = price
+					}
+				}
 				t.Logger.Info().Msgf("contract created %v", contract.Id)
 				err := trader.Trade(ctx, contract)
 
@@ -331,14 +372,20 @@ func (t *Trader) RequestPolicyMonitor() {
 				// wait after trade, arbitrary numbers used here,
 				if err == nil {
 					t.Logger.Info().Msg("Trade was successful")
-					time.Sleep(4 * time.Minute)
+					if t.Budget != -1 {
+						t.BudgetMutex.Lock()
+						t.Budget -= contract.Price
+						t.BudgetMutex.Unlock()
+					}
+					time.Sleep(2 * time.Minute)
 				} else {
 					t.Logger.Info().Msg("Trade was not successul, waiting before initiating a new trade")
-					time.Sleep(2 * time.Minute)
+					time.Sleep(1 * time.Minute)
 				}
 			}
 		}
 		time.Sleep(10 * time.Second)
+		t.Logger.Info().Msgf("budget is %v", t.Budget)
 	}
 }
 
