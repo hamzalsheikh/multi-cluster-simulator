@@ -312,7 +312,7 @@ func (sched *Scheduler) Delay() {
 				if err == nil {
 					// Send telemetry
 					// Update cluster wait time and delete job from map
-					sched.logger.Info().Msgf("scheduled job %v from level 1, wait time %v\n", sched.Level0[0].Id, sched.WaitTime.JobsMap[sched.Level0[i].Id]) // remove job from level1 queue
+					sched.logger.Info().Msgf("scheduled job %v from level 1, wait time %v\n", sched.Level1[i].Id, sched.WaitTime.JobsMap[sched.Level1[i].Id]) // remove job from level1 queue
 					delete(sched.WaitTime.JobsMap, sched.Level1[i].Id)
 					hist.Record(context.Background(), sched.WaitTime.JobsMap[sched.Level1[i].Id])
 					sched.Level1 = append(sched.Level1[:i], sched.Level1[i+1:]...)
