@@ -309,19 +309,17 @@ func (sched *Scheduler) Delay() {
 				sched.WaitTime.Lock.Lock()
 				sched.WaitTime.TotalTime -= sched.WaitTime.JobsMap[sched.Level1[i].Id]
 				sched.WaitTime.JobsMap[sched.Level1[i].Id] = time.Since(sched.Level1[i].WaitTime).Milliseconds()
-				sched.WaitTime.TotalTime += sched.WaitTime.JobsMap[sched.Level1[i].Id]
 				if err == nil {
 					// Send telemetry
 					// Update cluster wait time and delete job from map
+					sched.logger.Info().Msgf("scheduled job %v from level 1, wait time %v\n", sched.Level0[0].Id, sched.WaitTime.JobsMap[sched.Level0[i].Id]) // remove job from level1 queue
 					delete(sched.WaitTime.JobsMap, sched.Level1[i].Id)
 					hist.Record(context.Background(), sched.WaitTime.JobsMap[sched.Level1[i].Id])
-					sched.logger.Info().Msgf("scheduled job %v from level 1\n", sched.Level1[i].Id)
-					// remove job from level1 queue
 					sched.Level1 = append(sched.Level1[:i], sched.Level1[i+1:]...)
 					counter.Add(context.Background(), -1)
 
 				} else {
-
+					sched.WaitTime.TotalTime += sched.WaitTime.JobsMap[sched.Level1[i].Id]
 					sched.logger.Info().Msgf("couldn't schedule job %v from level 1\n", sched.Level1[i].Id)
 				}
 				sched.WaitTime.Lock.Unlock()
@@ -339,11 +337,9 @@ func (sched *Scheduler) Delay() {
 			sched.WaitTime.Lock.Lock()
 			sched.WaitTime.TotalTime -= sched.WaitTime.JobsMap[sched.Level0[0].Id]
 			sched.WaitTime.JobsMap[sched.Level0[0].Id] = time.Since(sched.Level0[0].WaitTime).Milliseconds()
-			sched.WaitTime.TotalTime += sched.WaitTime.JobsMap[sched.Level0[0].Id]
 			if err == nil {
 				// remove job from level1 queue
-				sched.logger.Info().Msgf("scheduled job %v from level 0\n", sched.Level0[0].Id)
-
+				sched.logger.Info().Msgf("scheduled job %v from level 0, wait time %v\n", sched.Level0[0].Id, sched.WaitTime.JobsMap[sched.Level0[0].Id])
 				hist.Record(context.Background(), sched.WaitTime.JobsMap[sched.Level0[0].Id])
 				delete(sched.WaitTime.JobsMap, sched.Level0[0].Id)
 				sched.Level0 = sched.Level0[1:]
@@ -351,6 +347,7 @@ func (sched *Scheduler) Delay() {
 			} else {
 				sched.logger.Info().Msgf("couldn't schedule job %v in level 0, wait time: %v\n", sched.Level0[0].Id, sched.Level0[0].WaitTime)
 
+				sched.WaitTime.TotalTime += sched.WaitTime.JobsMap[sched.Level0[0].Id]
 				// check if time exceeded to put in Level1
 				if time.Since(sched.Level0[0].WaitTime) >= sched.Policy.MaxWaitTime {
 					sched.L1Lock.Lock()
@@ -366,6 +363,5 @@ func (sched *Scheduler) Delay() {
 			sched.WaitTime.Lock.Unlock()
 		}
 		sched.L0Lock.Unlock()
-		time.Sleep(1 * time.Second)
 	}
 }
