@@ -2,8 +2,11 @@ package scheduler
 
 import (
 	"context"
+	"encoding/csv"
 	"errors"
+	"fmt"
 	"os"
+	"strconv"
 	"sync"
 	"time"
 
@@ -31,9 +34,8 @@ type Scheduler struct {
 	SchedulingAlgorithm SchedulingType
 	Policy              Policy
 	Cluster             *Cluster
-	WaitTime            *WaitTime
-	TotalWaitTime       float64
-	TotalJobs           int
+	WaitTime            *WaitTime // current wait time
+	GlobalWaitTime      *WaitTime
 	tracer              trace.Tracer
 	meter               api.Meter
 	logger              zerolog.Logger
@@ -56,13 +58,77 @@ type WaitTime struct {
 	JobsMap   map[uint]int64
 }
 
-func (w *WaitTime) GetAverage() float64 {
+func (w *WaitTime) GetCurrentAverage() float64 {
 	w.Lock.Lock()
 	defer w.Lock.Unlock()
 	if len(w.JobsMap) != 0 {
 		return float64(w.TotalTime) / float64(len(w.JobsMap))
 	}
 	return 0
+}
+
+func (w *WaitTime) GetGlobalAverage() float64 {
+	w.Lock.Lock()
+	defer w.Lock.Unlock()
+	if w.JobsCount != 0 {
+		return float64(w.TotalTime) / float64(w.JobsCount)
+	}
+	return 0
+}
+
+func (sched *Scheduler) ReportWaitTime() {
+	// Create a new CSV file
+
+	err := os.Mkdir("data", 0750)
+	if err != nil && !os.IsExist(err) {
+		sched.logger.Fatal().Err(err).Msgf("error creating data directory")
+	}
+
+	file, err := os.Create("data/" + os.Getenv("SERVICE_NAME") + "_waitTime.csv")
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
+	defer file.Close()
+
+	// Create a new CSV writer
+	writer := csv.NewWriter(file)
+
+	err = writer.Write(
+		[]string{
+			"time",
+			"current average wait time",
+			"total average wait time",
+		},
+	)
+	if err != nil {
+		sched.logger.Error().Err(err).Msgf("Couldn't input header")
+	}
+
+	var time_stamp int64
+	for {
+		curr := sched.WaitTime.GetCurrentAverage()
+		global := sched.GlobalWaitTime.GetGlobalAverage()
+		sched.logger.Info().Msgf("Current Average Wait Time: %v, Global Average Wait Time %v",
+			curr,
+			global,
+		)
+
+		err := writer.Write(
+			[]string{
+				strconv.FormatInt(time_stamp, 10),
+				strconv.FormatFloat(curr, 'f', 2, 64),
+				strconv.FormatFloat(global, 'f', 2, 64),
+			},
+		)
+		if err != nil {
+			sched.logger.Error().Err(err).Msgf("Couldn't record average wait time")
+		}
+
+		time_stamp += 1
+		writer.Flush()
+		time.Sleep(3 * time.Second)
+	}
 }
 
 type Job struct {
@@ -111,6 +177,7 @@ func Run(clt Cluster, URL string) {
 	sched.URL = URL
 	sched.Policy.MaxWaitTime = 10 * time.Second
 	sched.SchedulingAlgorithm = DELAY
+	go sched.ReportWaitTime()
 	switch sched.SchedulingAlgorithm {
 	case FIFO:
 		go sched.Fifo()
@@ -309,22 +376,23 @@ func (sched *Scheduler) Delay() {
 				err := sched.ScheduleJob(sched.Level1[i])
 				// check if job got scheduled
 				sched.WaitTime.Lock.Lock()
+				sched.GlobalWaitTime.Lock.Lock()
 				sched.WaitTime.TotalTime -= sched.WaitTime.JobsMap[sched.Level1[i].Id]
+				sched.GlobalWaitTime.TotalTime -= sched.WaitTime.JobsMap[sched.Level1[i].Id]
 				sched.WaitTime.JobsMap[sched.Level1[i].Id] = time.Since(sched.Level1[i].WaitTime).Milliseconds()
+				sched.GlobalWaitTime.TotalTime += sched.WaitTime.JobsMap[sched.Level1[i].Id]
+				sched.GlobalWaitTime.Lock.Unlock()
 				if err == nil {
 					// Send telemetry
 					// Update cluster wait time and delete job from map
 					hist.Record(context.Background(), sched.WaitTime.JobsMap[sched.Level1[i].Id])
-					sched.TotalWaitTime += float64(sched.WaitTime.JobsMap[sched.Level1[i].Id])
-					sched.TotalJobs += 1
-					sched.logger.Info().Msgf("scheduled job %v from level 1, global wait time %v\n", sched.Level1[i].Id, sched.TotalWaitTime/float64(sched.TotalJobs)) // remove job from level1 queue
+					// remove job
 					delete(sched.WaitTime.JobsMap, sched.Level1[i].Id)
 					sched.Level1 = append(sched.Level1[:i], sched.Level1[i+1:]...)
 					counter.Add(context.Background(), -1)
 
 				} else {
 					sched.WaitTime.TotalTime += sched.WaitTime.JobsMap[sched.Level1[i].Id]
-					sched.logger.Info().Msgf("couldn't schedule job %v from level 1\n", sched.Level1[i].Id)
 				}
 				sched.WaitTime.Lock.Unlock()
 			}
@@ -339,27 +407,27 @@ func (sched *Scheduler) Delay() {
 			// check if job got scheduled
 
 			sched.WaitTime.Lock.Lock()
+			sched.GlobalWaitTime.Lock.Lock()
+
 			sched.WaitTime.TotalTime -= sched.WaitTime.JobsMap[sched.Level0[0].Id]
+			sched.GlobalWaitTime.TotalTime -= sched.WaitTime.JobsMap[sched.Level0[0].Id]
+
 			sched.WaitTime.JobsMap[sched.Level0[0].Id] = time.Since(sched.Level0[0].WaitTime).Milliseconds()
+			sched.GlobalWaitTime.TotalTime += sched.WaitTime.JobsMap[sched.Level0[0].Id]
+			sched.GlobalWaitTime.Lock.Unlock()
+
 			if err == nil {
 				// remove job from level1 queue
-				sched.logger.Info().Msgf("scheduled job %v from level 0, wait time %v\n", sched.Level0[0].Id, sched.WaitTime.JobsMap[sched.Level0[0].Id])
 				hist.Record(context.Background(), sched.WaitTime.JobsMap[sched.Level0[0].Id])
-				sched.TotalWaitTime += float64(sched.WaitTime.JobsMap[sched.Level0[0].Id])
-				sched.TotalJobs += 1
-				sched.logger.Info().Msgf("scheduled job %v from level 0, global wait time %v\n", sched.Level0[0].Id, sched.TotalWaitTime/float64(sched.TotalJobs))
 				delete(sched.WaitTime.JobsMap, sched.Level0[0].Id)
 				sched.Level0 = sched.Level0[1:]
 				counter.Add(context.Background(), -1)
 			} else {
-				sched.logger.Info().Msgf("couldn't schedule job %v in level 0, wait time: %v\n", sched.Level0[0].Id, sched.Level0[0].WaitTime)
-
 				sched.WaitTime.TotalTime += sched.WaitTime.JobsMap[sched.Level0[0].Id]
 				// check if time exceeded to put in Level1
 				if time.Since(sched.Level0[0].WaitTime) >= sched.Policy.MaxWaitTime {
 					sched.L1Lock.Lock()
 
-					sched.logger.Info().Msgf("moved job %v from level 0 to level 1", sched.Level0[0].Id)
 					sched.Level1 = append(sched.Level1, sched.Level0[0])
 					sched.Level0 = sched.Level0[1:]
 					sched.L1Lock.Unlock()

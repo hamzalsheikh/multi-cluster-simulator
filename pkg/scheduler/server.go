@@ -17,7 +17,22 @@ import (
 )
 
 // create an instance of scheduler
-var sched = Scheduler{WQueueLock: new(sync.Mutex), RQueueLock: new(sync.Mutex), LQueueLock: new(sync.Mutex), BQueueLock: new(sync.Mutex), L0Lock: new(sync.Mutex), L1Lock: new(sync.Mutex), WaitTime: &WaitTime{Lock: new(sync.Mutex), JobsMap: make(map[uint]int64)}}
+var sched = Scheduler{
+	WQueueLock: new(sync.Mutex),
+	RQueueLock: new(sync.Mutex),
+	LQueueLock: new(sync.Mutex),
+	BQueueLock: new(sync.Mutex),
+	L0Lock:     new(sync.Mutex),
+	L1Lock:     new(sync.Mutex),
+	WaitTime: &WaitTime{
+		Lock:    new(sync.Mutex),
+		JobsMap: make(map[uint]int64),
+	},
+	GlobalWaitTime: &WaitTime{
+		Lock:    new(sync.Mutex),
+		JobsMap: make(map[uint]int64),
+	},
+}
 
 func RegisterHandlers() {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -70,7 +85,7 @@ func RegisterHandlers() {
 
 		sched.WaitTime.Lock.Lock()
 		sched.WaitTime.JobsMap[j.Id] = 0
-		sched.WaitTime.JobsCount += 1
+		sched.GlobalWaitTime.JobsCount += 1
 		sched.WaitTime.Lock.Unlock()
 		meter, _ := sched.meter.Int64UpDownCounter(os.Getenv("SERVICE_NAME") + "_jobs_in_queue")
 		meter.Add(context.Background(), 1)

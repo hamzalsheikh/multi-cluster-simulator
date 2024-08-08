@@ -34,7 +34,7 @@ func InitCluster(clt Cluster) (*Cluster, error) {
 	cluster.nodesMutex = new(sync.Mutex)
 	cluster.SetTotalResources()
 
-	go cluster.updateUtilization(10 * time.Second)
+	go cluster.updateUtilization(3 * time.Second)
 	cluster.recordUtilization()
 
 	return &cluster, nil
@@ -75,7 +75,7 @@ func (c *Cluster) SetResourceUtilization() {
 	total_core, total_mem := c.GetTotalResources()
 
 	c.CoreUtilization, c.MemoryUtilization = c.CoreUtilization/float32(total_core), c.MemoryUtilization/float32(total_mem)
-	sched.logger.Info().Msgf("utilization core: %v, memory %v", c, c.CoreUtilization, c.MemoryUtilization)
+	sched.logger.Info().Msgf("core utilization: %v, memory utilization: %v", c.CoreUtilization, c.MemoryUtilization)
 }
 
 func (c *Cluster) GetResourceUtilization() (float32, float32) {
@@ -233,7 +233,6 @@ func (n *Node) RunJob(j Job) error {
 	n.CoresAvailable -= j.CoresNeeded
 	n.MemoryAvailable -= j.MemoryNeeded
 	n.mutex.Unlock()
-	sched.logger.Info().Msgf("node %v running job %v cores: %v mem: %v \n", n.Id, j.Id, n.CoresAvailable, n.MemoryAvailable)
 	go n.FinishJob(j)
 	return nil
 }
@@ -246,7 +245,6 @@ func (n *Node) FinishJob(j Job) error {
 	n.CoresAvailable += j.CoresNeeded
 	n.MemoryAvailable += j.MemoryNeeded
 	n.mutex.Unlock()
-	sched.logger.Info().Msgf("node %v finished job %v cores: %v mem: %v\n", n.Id, j.Id, n.CoresAvailable, n.MemoryAvailable)
 	// inform scheduler that you're done
 	sched.JobFinished(j)
 	return nil

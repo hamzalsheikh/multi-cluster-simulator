@@ -24,3 +24,6 @@ go.work
 logs
 # binary directory
 bin
+
+# data directory
+data

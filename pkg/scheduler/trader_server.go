@@ -37,7 +37,7 @@ func (s *traderServer) Start(params *pb.StartParams, stream pb.ResourceChannel_S
 		core_util, mem_util := sched.Cluster.GetResourceUtilization()
 		currentClusterState.CoresUtilization = core_util
 		currentClusterState.MemoryUtilization = mem_util
-		currentClusterState.AverageWaitTime = sched.WaitTime.GetAverage()
+		currentClusterState.AverageWaitTime = sched.WaitTime.GetCurrentAverage()
 		sched.logger.Info().Msgf("In scheduler util: core %v mem %v wt %v", currentClusterState.CoresUtilization, currentClusterState.MemoryUtilization, currentClusterState.AverageWaitTime)
 		stream.Send(&currentClusterState)
 		time.Sleep(5 * time.Second)
