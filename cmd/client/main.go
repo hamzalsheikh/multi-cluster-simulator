@@ -3,10 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/hamzalsheikh/multi-cluster-simulator/internal/service"
-	"github.com/hamzalsheikh/multi-cluster-simulator/pkg/client"
 	"net/http"
 	"os"
+
+	"github.com/hamzalsheikh/multi-cluster-simulator/internal/service"
+	"github.com/hamzalsheikh/multi-cluster-simulator/pkg/client"
 )
 
 func main() {
@@ -33,5 +34,5 @@ func main() {
 
 	schedPort := 2001
 
-	client.Run(fmt.Sprintf("http://%v:%v", os.Getenv("SCHEDULER_HOST"), schedPort), fmt.Sprintf("http://%v:%v", "localhost", port))
+	client.Run(fmt.Sprintf("http://%v:%v", os.Getenv("SCHEDULER_HOST"), schedPort), fmt.Sprintf("http://%v:%v", "localhost", port), true, "./traces/batch_instance.csv")
 }
