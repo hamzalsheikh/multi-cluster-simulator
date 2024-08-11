@@ -3,9 +3,12 @@ package trader
 import (
 	"container/heap"
 	"context"
+	"encoding/csv"
 	"errors"
 	"fmt"
+	"os"
 	"reflect"
+	"strconv"
 	"sync"
 	"time"
 
@@ -163,7 +166,8 @@ func (r requestPolicy_WaitTime) Broken(cs clusterState) bool {
 // incentive modeled over Azure Cloud Services
 func (t *Trader) GetMinimumIncentive(coreUtil float32, memUtil float32) float64 {
 	// if budget is -1, environment is cooperative
-	if t.Budget == -1 {
+	budget := t.GetBudget()
+	if budget == -1 {
 		return 0
 	}
 	if coreUtil < 0.4 && memUtil < 0.4 {
@@ -191,7 +195,7 @@ func (t *Trader) ApproveTrade(ctx context.Context, contract *pb.ContractRequest)
 			//incentive := t.ApprovePolicy.MinimumCoreIncentive*float64(contract.Cores)*contract.Time.AsDuration().Seconds() + t.ApprovePolicy.MinimumMemoryIncentive*float64(contract.Memory)*contract.Time.AsDuration().Seconds()
 			incentive := t.GetMinimumIncentive(clusterState.CoreUtilization, clusterState.MemoryUtilization)
 			if float64(contract.Price) >= incentive {
-				t.Logger.Info().Msgf("Approved trade with contract ID: %v", contract.Id)
+				t.Logger.Info().Msgf("Approved trade with contract %+v", contract)
 				span.AddEvent("Approved trade")
 				return true
 			}
@@ -327,10 +331,16 @@ func (t *Trader) RequestPolicyMonitor() {
 				ctx, span := t.Tracer.Start(context.Background(), "utilization policy broken")
 				t.Logger.Info().Msg("utilization policy broken")
 				contract = calculateContractRequest(ctx, trader.SchedulerClient, smallNode)
-				if t.Budget != -1 {
+				if contract.Time == nil || contract.Cores == 0 || contract.Memory == 0 {
+					t.Logger.Info().Msg("invalid contract")
+					continue
+				}
+				t.Logger.Info().Msgf("contract created %v", contract)
+				budget := t.GetBudget()
+				if budget != -1 {
 					price := t.MaximimumCoreCost*float32(contract.Time.Seconds) + t.MaximimumMemoryCost*float32(contract.Time.Seconds)
-					if price > t.Budget {
-						contract.Price = t.Budget
+					if price > budget {
+						contract.Price = budget
 					} else {
 						contract.Price = price
 					}
@@ -341,10 +351,9 @@ func (t *Trader) RequestPolicyMonitor() {
 				// wait after trade, arbitrary numbers used here,
 				if err == nil {
 					t.Logger.Info().Msg("Trade was successful")
-					if t.Budget != -1 {
-						t.BudgetMutex.Lock()
-						t.Budget -= contract.Price
-						t.BudgetMutex.Unlock()
+
+					if t.GetBudget() != -1 {
+						t.SetBudget(-contract.Price)
 					}
 					time.Sleep(2 * time.Minute)
 				} else {
@@ -357,10 +366,15 @@ func (t *Trader) RequestPolicyMonitor() {
 
 				t.Logger.Info().Msg("wait time policy broken")
 				contract = calculateContractRequest(ctx, trader.SchedulerClient, fastNode)
-				if t.Budget != -1 {
+				if contract.Time == nil || contract.Cores == 0 || contract.Memory == 0 {
+					t.Logger.Info().Msg("invalid contract")
+					continue
+				}
+				budget := t.GetBudget()
+				if budget != -1 {
 					price := t.MaximimumCoreCost*float32(contract.Time.Seconds) + t.MaximimumMemoryCost*float32(contract.Time.Seconds)
-					if price > t.Budget {
-						contract.Price = t.Budget
+					if price > budget {
+						contract.Price = budget
 					} else {
 						contract.Price = price
 					}
@@ -372,10 +386,8 @@ func (t *Trader) RequestPolicyMonitor() {
 				// wait after trade, arbitrary numbers used here,
 				if err == nil {
 					t.Logger.Info().Msg("Trade was successful")
-					if t.Budget != -1 {
-						t.BudgetMutex.Lock()
-						t.Budget -= contract.Price
-						t.BudgetMutex.Unlock()
+					if t.GetBudget() != -1 {
+						t.SetBudget(-contract.Price)
 					}
 					time.Sleep(2 * time.Minute)
 				} else {
@@ -385,7 +397,7 @@ func (t *Trader) RequestPolicyMonitor() {
 			}
 		}
 		time.Sleep(10 * time.Second)
-		t.Logger.Info().Msgf("budget is %v", t.Budget)
+		t.Logger.Info().Msgf("budget is %v", t.GetBudget())
 	}
 }
 
@@ -402,9 +414,71 @@ func Run(schedURL string, URL string, schedClient pb.ResourceChannelClient, logg
 	trader.newTrader(policy)
 
 	go trader.RequestPolicyMonitor()
+	go trader.ReportBudget()
 	getClusterState(trader.SchedulerClient)
 }
 
 func SetTracer(t trace.Tracer) {
 	trader.Tracer = t
+}
+
+func (t *Trader) GetBudget() float32 {
+	t.BudgetMutex.Lock()
+	defer t.BudgetMutex.Unlock()
+
+	return t.Budget
+}
+
+func (t *Trader) SetBudget(diff float32) {
+	t.BudgetMutex.Lock()
+	defer t.BudgetMutex.Unlock()
+
+	t.Budget += diff
+}
+
+func (t *Trader) ReportBudget() {
+	// Create a new CSV file
+
+	err := os.Mkdir("data", 0750)
+	if err != nil && !os.IsExist(err) {
+		t.Logger.Fatal().Err(err).Msgf("error creating data directory")
+	}
+
+	file, err := os.Create("data/" + os.Getenv("SERVICE_NAME") + "_budget.csv")
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
+	defer file.Close()
+
+	// Create a new CSV writer
+	writer := csv.NewWriter(file)
+
+	err = writer.Write(
+		[]string{
+			"time",
+			"budget",
+		},
+	)
+	if err != nil {
+		t.Logger.Error().Err(err).Msgf("Couldn't input header")
+	}
+
+	var time_stamp int64
+	for {
+
+		err := writer.Write(
+			[]string{
+				strconv.FormatInt(time_stamp, 10),
+				strconv.FormatFloat(float64(t.GetBudget()), 'f', 2, 64),
+			},
+		)
+		if err != nil {
+			t.Logger.Error().Err(err).Msgf("Couldn't record budget")
+		}
+
+		time_stamp += 1
+		writer.Flush()
+		time.Sleep(3 * time.Second)
+	}
 }

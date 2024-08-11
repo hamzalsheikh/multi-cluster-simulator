@@ -41,7 +41,7 @@ func getClusterState(client pb.ResourceChannelClient) {
 			trader.State.setUtilization(state)
 		}
 		span.End()
-		trader.Logger.Info().Msgf("received cluster state from scheduler, AverageWaitTime: %v", state.AverageWaitTime)
+		trader.Logger.Info().Msgf("received cluster state from scheduler: %+v", state)
 	}
 
 }

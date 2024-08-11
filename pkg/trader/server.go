@@ -79,6 +79,12 @@ func (s *traderServer) ApproveContract(ctx context.Context, contract *pb.Contrac
 	if err != nil {
 		trader.Logger.Error().Err(err).Msg("couldn't get virtual node from scheduler")
 	}
+
+	if contract.Price > 0 {
+		trader.BudgetMutex.Lock()
+		trader.Budget += contract.Price
+		trader.BudgetMutex.Unlock()
+	}
 	// reinitialize currentContract for future activity
 	s.currentContract = &pb.ContractResponse{}
 	return virtualNode, err
