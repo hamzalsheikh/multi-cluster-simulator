@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"math"
 	"math/rand"
 	"net/http"
 	"time"
@@ -15,11 +14,6 @@ import (
 
 	"go.opentelemetry.io/otel/trace"
 	"gonum.org/v1/gonum/stat/distuv"
-
-	"encoding/csv"
-	"os"
-	"sort"
-	"strconv"
 )
 
 type Client struct {
@@ -39,7 +33,7 @@ func Run(schedURL string, URL string, trace bool, traceFilePath string) {
 	client.URL = URL
 	// production workload
 	if trace {
-		client.sendJobsAlibaba(traceFilePath)
+		client.sendBatchJobsAlibaba(traceFilePath)
 		return
 	}
 	// synthatic workload
@@ -156,139 +150,62 @@ func (c *Client) sendJobs() {
 	}
 }
 
-type timeTable struct {
-	start int
-	jobs  []scheduler.Job
-}
-
-func (c *Client) sendJobsAlibaba(traceFilePath string) {
-	pwd, err := os.Getwd()
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
-	fmt.Println(pwd)
-	timeTables, err := parseCSVAndPopulateTimeTable(traceFilePath, 0.1)
-
-	if err != nil {
-		fmt.Println("Error:", err)
-		return
-	}
-	prev := 0
-	for _, t := range timeTables {
-		time.Sleep(time.Duration(t.start) - time.Duration(prev))
-		for _, j := range t.jobs {
-			SendJob(j)
-			fmt.Printf("Job %+v sent\n", j)
-		}
-		prev = t.start
-	}
-	fmt.Println("Finished sending all trace jobs")
-}
-
-func parseCSVAndPopulateTimeTable(filePath string, scale float32) ([]timeTable, error) {
-	// Open the CSV file
-	file, err := os.Open(filePath)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-
-	// Read the CSV file
-	reader := csv.NewReader(file)
-	records, err := reader.ReadAll()
-	if err != nil {
-		return nil, err
-	}
-	fmt.Printf("read all csv file\n")
-	// Convert the records to a more usable format and process them
-	type RowData struct {
-		start int
-		job   scheduler.Job
-	}
-	var rows []RowData
-
-	for _, record := range records {
-		start, _ := strconv.Atoi(record[0])
-		end, _ := strconv.Atoi(record[1])
-		// job should not be in trace
-		if start < 0 && end < 0 {
-			continue
-		}
-
-		if start < 0 {
-			start = 0
-		}
-
-		if start > end {
-			start, end = end, start
-		}
-
-		duration := int(float32(end-start) * scale)
-
-		if duration < 0 {
-			fmt.Printf("Error, duration cannot be negative, start %v, end %v", start, end)
-			return nil, fmt.Errorf("Error, duration cannot be negative")
-		}
-
-		if record[5] == "Terminated" {
-			mem, err := strconv.ParseFloat(record[9], 32)
-			if err != nil {
-				fmt.Print("couldn't parse memory")
-				continue
-			}
-
-			core, err := strconv.ParseFloat(record[7], 32)
-			if err != nil {
-				fmt.Print("couldn't parse core")
-				continue
-			}
-
-			job := scheduler.Job{
-				Id:           uint(rand.Int()),
-				CoresNeeded:  uint(math.Ceil(core)),
-				MemoryNeeded: uint(mem * float64(8000)),
-				Duration:     time.Duration(duration) * time.Second,
-			}
-			rows = append(rows, RowData{start: int(float32(start) * scale), job: job})
-		}
-	}
-	fmt.Printf("filtered only the terminated\n")
-	// Sort the rows by the start time
-	sort.Slice(rows, func(i, j int) bool {
-		return rows[i].start < rows[j].start
-	})
-	fmt.Printf("sorted rows %v\n", len(rows))
-
-	// Create the timeTable structs
-	var timeTables []timeTable
-	currentStart := -1
-	var currentJobs []scheduler.Job
-
-	for _, row := range rows {
-		if row.start != currentStart {
-			if currentStart != -1 {
-				timeTables = append(timeTables, timeTable{start: currentStart, jobs: currentJobs})
-			}
-			currentStart = row.start
-			currentJobs = []scheduler.Job{row.job}
-		} else {
-			currentJobs = append(currentJobs, row.job)
-		}
-	}
-
-	// Append the last timeTable
-	if currentStart != -1 {
-		timeTables = append(timeTables, timeTable{start: currentStart, jobs: currentJobs})
-	}
-	fmt.Printf("created timetable\n")
-	return timeTables, nil
-}
-
-func atoiOrDefault(s string, def int) int {
-	value, err := strconv.Atoi(s)
-	if err != nil {
-		return def
-	}
-	return value
-}
+//func processBatch(batch []scheduler.Job) {
+//	// Process the batch as needed (e.g., store it, send it to another function, etc.)
+//	for _, job := range batch {
+//		fmt.Printf("Job Id: %s, CoreNeeded: %d, MemoryNeeded: %d, Duration: %d\n",
+//			job.Id, job.CoresNeeded, job.MemoryNeeded, job.Duration)
+//	}
+//	fmt.Println("Batch processed.")
+//}
+//
+//func parseCSVAndPopulateTimeTable_2018(filePath string, batchSize int) error {
+//	file, err := os.Open(filePath)
+//	if err != nil {
+//		return err
+//	}
+//	defer file.Close()
+//
+//	reader := csv.NewReader(file)
+//	var batch []scheduler.Job
+//
+//	for {
+//		// Read the next row from the CSV
+//		row, err := reader.Read()
+//		if err != nil {
+//			if err.Error() == "EOF" {
+//				break
+//			}
+//			return err
+//		}
+//
+//		// Only add the job if row[4] == "Terminated"
+//		if row[4] == "Terminated" {
+//			start, _ := strconv.Atoi(row[5])
+//			end, _ := strconv.Atoi(row[6])
+//
+//			job := scheduler.Job{
+//				Id:           row[2],
+//				CoresNeeded:   atoiOrDefault(row[11], 0) / 100,
+//				MemoryNeeded: atoiOrDefault(row[13], 0) * 80000,
+//				Duration:     end - start,
+//			}
+//
+//			batch = append(batch, job)
+//		}
+//
+//		// Process the batch when it reaches the batch size threshold
+//		if len(batch) >= batchSize {
+//			processBatch(batch)
+//			batch = []scheduler.Job{} // Reset the batch
+//		}
+//	}
+//
+//	// Process any remaining jobs in the batch
+//	if len(batch) > 0 {
+//		processBatch(batch)
+//	}
+//
+//	return nil
+//}
+//
