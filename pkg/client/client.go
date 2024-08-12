@@ -168,7 +168,7 @@ func (c *Client) sendJobsAlibaba(traceFilePath string) {
 		os.Exit(1)
 	}
 	fmt.Println(pwd)
-	timeTables, err := parseCSVAndPopulateTimeTable(traceFilePath)
+	timeTables, err := parseCSVAndPopulateTimeTable(traceFilePath, 0.1)
 
 	if err != nil {
 		fmt.Println("Error:", err)
@@ -186,7 +186,7 @@ func (c *Client) sendJobsAlibaba(traceFilePath string) {
 	fmt.Println("Finished sending all trace jobs")
 }
 
-func parseCSVAndPopulateTimeTable(filePath string) ([]timeTable, error) {
+func parseCSVAndPopulateTimeTable(filePath string, scale float32) ([]timeTable, error) {
 	// Open the CSV file
 	file, err := os.Open(filePath)
 	if err != nil {
@@ -224,7 +224,7 @@ func parseCSVAndPopulateTimeTable(filePath string) ([]timeTable, error) {
 			start, end = end, start
 		}
 
-		duration := end - start
+		duration := int(float32(end-start) * scale)
 
 		if duration < 0 {
 			fmt.Printf("Error, duration cannot be negative, start %v, end %v", start, end)
@@ -250,7 +250,7 @@ func parseCSVAndPopulateTimeTable(filePath string) ([]timeTable, error) {
 				MemoryNeeded: uint(mem * float64(8000)),
 				Duration:     time.Duration(duration) * time.Second,
 			}
-			rows = append(rows, RowData{start: start, job: job})
+			rows = append(rows, RowData{start: int(float32(start) * scale), job: job})
 		}
 	}
 	fmt.Printf("filtered only the terminated\n")
