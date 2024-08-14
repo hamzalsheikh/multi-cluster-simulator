@@ -34,5 +34,10 @@ func main() {
 
 	schedPort := 2001
 
-	client.Run(fmt.Sprintf("http://%v:%v", os.Getenv("SCHEDULER_HOST"), schedPort), fmt.Sprintf("http://%v:%v", "localhost", port), true, "./traces/batch_instance.csv")
+	client.Run(
+		fmt.Sprintf("http://%v:%v", os.Getenv("SCHEDULER_HOST"), schedPort),
+		fmt.Sprintf("http://%v:%v", "localhost", port),
+		true, // use trace data
+		"./traces/batch_instance.csv",
+	)
 }

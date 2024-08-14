@@ -28,8 +28,8 @@ func (c *Client) sendBatchJobsAlibaba(traceFilePath string) {
 		os.Exit(1)
 	}
 	fmt.Println(pwd)
-	timeTables, err := parseBatchInstance(traceFilePath, 0.1)
-
+	tt, err := parseBatchInstance(traceFilePath, 0.1)
+	timeTables, err := parseContainerToJobs("./traces/container_event.csv", tt, 0.1)
 	if err != nil {
 		fmt.Println("Error:", err)
 		return

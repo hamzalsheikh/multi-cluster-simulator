@@ -52,7 +52,7 @@ func parseBatchInstance_2018(filePath string, scale float32, offset int) ([]time
 			start = 0
 		}
 
-		duration := int(float32(end-start) * scale)
+		duration := float32(end-start) * scale
 
 		if duration < 0 {
 			fmt.Printf("Error, duration cannot be negative, start %v, end %v", start, end)
@@ -141,7 +141,7 @@ func parseContainerToJobs_2018(filePath string, tt []timeTable, scale float32, o
 			start = offset
 		}
 
-		duration := int(float32(maxTime-start) * scale)
+		duration := float32(maxTime-start) * scale
 		if duration < 0 {
 			continue
 		}
