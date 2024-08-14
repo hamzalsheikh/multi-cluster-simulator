@@ -84,7 +84,7 @@ func parseBatchInstance(filePath string, scale float32) ([]timeTable, error) {
 			continue
 		}
 
-		duration := int(float32(end-start) * scale)
+		duration := float32(end-start) * scale
 
 		if duration < 0 {
 			fmt.Printf("Error, duration cannot be negative, start %v, end %v", start, end)
@@ -146,14 +146,6 @@ func parseBatchInstance(filePath string, scale float32) ([]timeTable, error) {
 	return timeTables, nil
 }
 
-type parseJob struct {
-	Id           uint
-	MemoryNeeded uint
-	CoresNeeded  uint
-	Start        int
-	End          int
-}
-
 func parseContainerToJobs(filePath string, tt []timeTable, scale float32) ([]timeTable, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
@@ -167,80 +159,30 @@ func parseContainerToJobs(filePath string, tt []timeTable, scale float32) ([]tim
 		return nil, err
 	}
 
-	jobMap := make(map[int]parseJob)
-
 	for _, row := range rows {
 		id, _ := strconv.Atoi(row[2])
 		memoryNeeded, _ := strconv.ParseFloat(row[5], 64)
 		cores := len(strings.Split(row[7], "|"))
 		timeStamp, _ := strconv.Atoi(row[3])
+		// 86400 is one day in seconds (max time in this experiment)
+		duration := float32(86400-timeStamp) * scale
+		j := scheduler.Job{
+			Id:           uint(id),
+			MemoryNeeded: uint(memoryNeeded * 8000),
+			CoresNeeded:  uint(cores),
+			Duration:     time.Duration(duration) * time.Second,
+		}
 
-		if row[1] == "Create" {
-			if job, exists := jobMap[id]; exists {
-				duration := int(float32(job.End-timeStamp) * scale)
-				if duration < 0 {
-					continue
-				}
-				j := scheduler.Job{
-					Id:           uint(id),
-					MemoryNeeded: uint(memoryNeeded * 8000),
-					CoresNeeded:  uint(cores),
-					Duration:     time.Duration(duration) * time.Second,
-				}
-
-				n, found := slices.BinarySearchFunc(tt, timeTable{start: int(float32(timeStamp) * scale)}, func(a, b timeTable) int {
-					return cmp.Compare(a.start, b.start)
-				})
-				if found {
-					tt[n].jobs = append(tt[n].jobs, j)
-				} else {
-					tt = slices.Insert(tt, n, timeTable{
-						start: int(float32(timeStamp) * scale),
-						jobs:  []scheduler.Job{j},
-					})
-				}
-				delete(jobMap, id)
-			} else {
-				jobMap[id] = parseJob{
-					Id:           uint(id),
-					MemoryNeeded: uint(memoryNeeded * 8000),
-					CoresNeeded:  uint(cores),
-					Start:        timeStamp,
-				}
-			}
-		} else if row[1] == "Delete" {
-			if job, exists := jobMap[id]; exists {
-				duration := int(float32(timeStamp-job.Start) * scale)
-				if duration < 0 {
-					continue
-				}
-				j := scheduler.Job{
-					Id:           uint(id),
-					MemoryNeeded: uint(memoryNeeded * 8000),
-					CoresNeeded:  uint(cores),
-					Duration:     time.Duration(duration) * time.Second,
-				}
-
-				n, found := slices.BinarySearchFunc(tt, timeTable{start: int(float32(job.Start) * scale)}, func(a, b timeTable) int {
-					return cmp.Compare(a.start, b.start)
-				})
-				if found {
-					tt[n].jobs = append(tt[n].jobs, j)
-				} else {
-					tt = slices.Insert(tt, n, timeTable{
-						start: int(float32(job.Start) * scale),
-						jobs:  []scheduler.Job{j},
-					})
-				}
-				delete(jobMap, id)
-			} else {
-				jobMap[id] = parseJob{
-					Id:           uint(id),
-					MemoryNeeded: uint(memoryNeeded * 8000),
-					CoresNeeded:  uint(cores),
-					End:          timeStamp,
-				}
-			}
+		n, found := slices.BinarySearchFunc(tt, timeTable{start: int(float32(timeStamp) * scale)}, func(a, b timeTable) int {
+			return cmp.Compare(a.start, b.start)
+		})
+		if found {
+			tt[n].jobs = append(tt[n].jobs, j)
+		} else {
+			tt = slices.Insert(tt, n, timeTable{
+				start: int(float32(timeStamp) * scale),
+				jobs:  []scheduler.Job{j},
+			})
 		}
 	}
 	return tt, nil
