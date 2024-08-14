@@ -81,7 +81,7 @@ func parseBatchInstance(filePath string, scale float32) ([]timeTable, error) {
 		}
 
 		if start > end {
-			start, end = end, start
+			continue
 		}
 
 		duration := int(float32(end-start) * scale)
@@ -146,14 +146,6 @@ func parseBatchInstance(filePath string, scale float32) ([]timeTable, error) {
 	return timeTables, nil
 }
 
-func atoiOrDefault(s string, def int) int {
-	value, err := strconv.Atoi(s)
-	if err != nil {
-		return def
-	}
-	return value
-}
-
 type parseJob struct {
 	Id           uint
 	MemoryNeeded uint
@@ -196,14 +188,14 @@ func parseContainerToJobs(filePath string, tt []timeTable, scale float32) ([]tim
 					Duration:     time.Duration(duration) * time.Second,
 				}
 
-				n, found := slices.BinarySearchFunc(tt, timeTable{start: job.Start}, func(a, b timeTable) int {
+				n, found := slices.BinarySearchFunc(tt, timeTable{start: int(float32(timeStamp) * scale)}, func(a, b timeTable) int {
 					return cmp.Compare(a.start, b.start)
 				})
 				if found {
 					tt[n].jobs = append(tt[n].jobs, j)
 				} else {
 					tt = slices.Insert(tt, n, timeTable{
-						start: timeStamp,
+						start: int(float32(timeStamp) * scale),
 						jobs:  []scheduler.Job{j},
 					})
 				}
@@ -229,14 +221,14 @@ func parseContainerToJobs(filePath string, tt []timeTable, scale float32) ([]tim
 					Duration:     time.Duration(duration) * time.Second,
 				}
 
-				n, found := slices.BinarySearchFunc(tt, timeTable{start: job.Start}, func(a, b timeTable) int {
+				n, found := slices.BinarySearchFunc(tt, timeTable{start: int(float32(job.Start) * scale)}, func(a, b timeTable) int {
 					return cmp.Compare(a.start, b.start)
 				})
 				if found {
 					tt[n].jobs = append(tt[n].jobs, j)
 				} else {
 					tt = slices.Insert(tt, n, timeTable{
-						start: timeStamp,
+						start: int(float32(job.Start) * scale),
 						jobs:  []scheduler.Job{j},
 					})
 				}
