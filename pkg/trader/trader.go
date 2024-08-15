@@ -54,9 +54,9 @@ func (t *Trader) newTrader(policy string) {
 		MinimumCoreIncentive:   -1,
 		MinimumMemoryIncentive: -1,
 	}
-	t.Budget = -1
-	t.MaximimumCoreCost = 0
-	t.MaximimumMemoryCost = 0
+	t.Budget = 1000
+	t.MaximimumCoreCost = 0.000003
+	t.MaximimumMemoryCost = 0.000003
 
 	switch policy {
 	case "waitTime":
@@ -171,11 +171,11 @@ func (t *Trader) GetMinimumIncentive(coreUtil float32, memUtil float32) float64 
 		return 0
 	}
 	if coreUtil < 0.4 && memUtil < 0.4 {
-		return 0.005
+		return 0.00000075
 	} else if coreUtil < 0.6 && memUtil < 0.6 {
-		return 0.01
+		return 0.0000015
 	} else {
-		return 0.02
+		return 0.000003
 	}
 }
 
@@ -193,7 +193,7 @@ func (t *Trader) ApproveTrade(ctx context.Context, contract *pb.ContractRequest)
 			// check incentive
 			// If traders are not trading with incentives, price is expected to be 0 and the minimum price would be negative
 			//incentive := t.ApprovePolicy.MinimumCoreIncentive*float64(contract.Cores)*contract.Time.AsDuration().Seconds() + t.ApprovePolicy.MinimumMemoryIncentive*float64(contract.Memory)*contract.Time.AsDuration().Seconds()
-			incentive := t.GetMinimumIncentive(clusterState.CoreUtilization, clusterState.MemoryUtilization)
+			incentive := t.GetMinimumIncentive(clusterState.CoreUtilization, clusterState.MemoryUtilization) * contract.Time.AsDuration().Seconds()
 			if float64(contract.Price) >= incentive {
 				t.Logger.Info().Msgf("Approved trade with contract %+v", contract)
 				span.AddEvent("Approved trade")
