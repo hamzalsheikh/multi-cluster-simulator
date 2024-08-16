@@ -67,7 +67,6 @@ func RegisterHandlers() {
 
 	http.HandleFunc("/delay", func(w http.ResponseWriter, r *http.Request) {
 
-		sched.logger.Info().Msgf("Job recieved!")
 		// decode job object
 		var j Job
 		dec := json.NewDecoder(r.Body)

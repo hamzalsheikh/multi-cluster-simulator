@@ -63,7 +63,7 @@ func (t *Trader) newTrader(policy string) {
 		t.Logger.Info().Msg("request policy is waitTime")
 		t.RequestPolicies = append(t.RequestPolicies,
 			requestPolicy_WaitTime{
-				MaximumWaittime: 600000,
+				MaximumWaittime: 6000,
 			})
 	case "utilization":
 		t.Logger.Info().Msg("request policy is utilization")
@@ -77,7 +77,7 @@ func (t *Trader) newTrader(policy string) {
 
 		t.RequestPolicies = append(t.RequestPolicies,
 			requestPolicy_WaitTime{
-				MaximumWaittime: 600000,
+				MaximumWaittime: 6000,
 			},
 			requestPolicy_Utilization{
 				MemoryMax: 0.8,

@@ -3,15 +3,16 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
+	"net"
+	"os"
+
 	"github.com/hamzalsheikh/multi-cluster-simulator/internal/service"
 	"github.com/hamzalsheikh/multi-cluster-simulator/pkg/registry"
 	"github.com/hamzalsheikh/multi-cluster-simulator/pkg/trader"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"log"
-	"net"
-	"os"
 
 	pb "github.com/hamzalsheikh/multi-cluster-simulator/pkg/trader/gen"
 )
@@ -48,7 +49,11 @@ func main() {
 	fmt.Printf("Trader port is %v\n", port)
 
 	schedPort := 2000
-	conn, err := grpc.NewClient(fmt.Sprintf("%v:%v", os.Getenv("SCHEDULER_HOST"), schedPort), grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
+	conn, err := grpc.NewClient(
+		fmt.Sprintf("%v:%v", os.Getenv("SCHEDULER_HOST"), schedPort),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
+	)
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -82,6 +87,11 @@ func main() {
 	}
 	//defer conn.Close()
 	client := pb.NewResourceChannelClient(conn)
-	trader.Run(fmt.Sprintf("http://%v:%v", os.Getenv("SCHEDULER_HOST"), schedPort), grpcURL, client, service.CreateLogger(), "waitTime")
-
+	trader.Run(
+		fmt.Sprintf("http://%v:%v", os.Getenv("SCHEDULER_HOST"), schedPort),
+		grpcURL,
+		client,
+		service.CreateLogger(),
+		"both",
+	)
 }
