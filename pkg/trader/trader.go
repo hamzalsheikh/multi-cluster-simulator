@@ -355,10 +355,10 @@ func (t *Trader) RequestPolicyMonitor() {
 					if t.GetBudget() != -1 {
 						t.SetBudget(-contract.Price)
 					}
-					time.Sleep(2 * time.Minute)
+					time.Sleep(50 * time.Millisecond)
 				} else {
 					t.Logger.Info().Msg("Trade was not successul, waiting before initiating a new trade")
-					time.Sleep(1 * time.Minute)
+					time.Sleep(50 * time.Millisecond)
 				}
 
 			} else if policy.Broken(cs) {
@@ -389,14 +389,14 @@ func (t *Trader) RequestPolicyMonitor() {
 					if t.GetBudget() != -1 {
 						t.SetBudget(-contract.Price)
 					}
-					time.Sleep(2 * time.Minute)
+					time.Sleep(50 * time.Millisecond)
 				} else {
 					t.Logger.Info().Msg("Trade was not successul, waiting before initiating a new trade")
-					time.Sleep(1 * time.Minute)
+					time.Sleep(50 * time.Millisecond)
 				}
 			}
 		}
-		time.Sleep(10 * time.Second)
+		time.Sleep(5 * time.Second)
 		t.Logger.Info().Msgf("budget is %v", t.GetBudget())
 	}
 }

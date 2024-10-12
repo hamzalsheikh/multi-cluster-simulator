@@ -105,7 +105,7 @@ func (c *Client) sendJobs() {
 		return j
 	}
 
-	// create time distrribution
+	// create time distribution
 	switch c.time_dist {
 	case "poisson":
 		time_dist := distuv.Poisson{
